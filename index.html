@@ -42,6 +42,27 @@ const bgStart1 = new Image();
 bgStart1.src = 'bg_start1.png';
 const bgEnd1 = new Image(); 
 bgEnd1.src = 'bg_end1.png'
+const boss1Img = new Image();
+boss1Img.src = 'boss1.png';
+
+// --- ★新增：加载第二关 Boss & 附属物素材 ---
+const boss2BodyImg = new Image();
+boss2BodyImg.src = 'boss2_body.png'; 
+
+const boss2GuardImg = new Image(); // 正常状态
+boss2GuardImg.src = 'boss2_guard_normal.png';
+
+const boss2GuardAttackImg = new Image(); // 攻击状态
+boss2GuardAttackImg.src = 'boss2_guard_attack.png';
+
+
+const playerImg = new Image();
+playerImg.src = 'player_ship.png'; // 确保文件名和路径正确
+
+// --- ★新增：加载第三关 Boss 素材 ---
+const boss3Img = new Image();
+boss3Img.src = 'boss3_starship.png'; // 请确保文件名与你保存的贴图一致
+
 // --- 游戏全局状态 ---
 let gameState = 0; // 0=菜单，1=游戏中，2=死亡，3=胜利，4=剧情
 let isPaused = false;
@@ -316,10 +337,22 @@ class Bullet {
     getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
     draw(ctx) {
         if (this.type === 0) {
+            // --- ★精细化自机子弹 ---
+            let cx = this.x + this.w / 2;
+            let cy = this.y + this.h / 2;
+            
+            // 外层发光晕 (半透明黄色)
+            ctx.fillStyle = "rgba(255, 255, 0, 0.4)";
+            ctx.beginPath();
+            // 画一个稍大的椭圆作为光晕
+            ctx.ellipse(cx, cy, this.w / 2 + 2, this.h / 2 + 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 内层高能核心 (纯白锐利)
             ctx.fillStyle = "white";
-            ctx.fillRect(this.x + 2, this.y, this.w - 4, this.h);
-            ctx.strokeStyle = this.color;
-            ctx.strokeRect(this.x + 2, this.y, this.w - 4, this.h);
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, this.w / 2 - 1, this.h / 2 + 2, 0, 0, Math.PI * 2);
+            ctx.fill();
         } else if (this.type === 1) {
             let radius = this.w / 2.0;
             let grad = ctx.createRadialGradient(this.x + radius, this.y + radius, 0, this.x + radius, this.y + radius, radius);
@@ -365,10 +398,24 @@ class Enemy {
 class NormalEnemy extends Enemy {
     constructor(x, y) { super(x, y, 35, 30, 1, 10); }
     draw(ctx) {
-        let grad = ctx.createLinearGradient(this.x, this.y, this.x + 35, this.y);
-        grad.addColorStop(0, "gray"); grad.addColorStop(1, "darkgray");
+        // ★ 前掠翼侦察无人机
+        let grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y + 30);
+        grad.addColorStop(0, "#999"); grad.addColorStop(1, "#444");
+        
         ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x+35, this.y); ctx.lineTo(this.x+17, this.y+30); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(this.x + 17.5, this.y + 30); // 往下的机头
+        ctx.lineTo(this.x, this.y + 10);        // 左翼尖
+        ctx.lineTo(this.x + 10, this.y);        // 左翼根
+        ctx.lineTo(this.x + 17.5, this.y + 5);  // 尾部中心点
+        ctx.lineTo(this.x + 25, this.y);        // 右翼根
+        ctx.lineTo(this.x + 35, this.y + 10);   // 右翼尖
+        ctx.closePath();
+        ctx.fill();
+
+        // 蓝色的能量核心
+        ctx.fillStyle = "cyan";
+        ctx.beginPath(); ctx.arc(this.x + 17.5, this.y + 12, 3, 0, Math.PI*2); ctx.fill();
     }
     update() { this.y += 3 * diffMult; }
 }
@@ -376,8 +423,25 @@ class NormalEnemy extends Enemy {
 class ShooterEnemy extends Enemy {
     constructor(x, y) { super(x, y, 40, 40, 3, 50); this.timer = 0; }
     draw(ctx) {
-        ctx.fillStyle = "rgb(200, 100, 0)"; ctx.fillRect(this.x+5, this.y+10, 30, 15);
-        ctx.fillStyle = "black"; ctx.fillRect(this.x+15, this.y, 10, 30);
+        // ★ 双管突击炮舰
+        // 舰体主体
+        ctx.fillStyle = "#555";
+        ctx.beginPath();
+        ctx.moveTo(this.x + 20, this.y + 40); // 机头
+        ctx.lineTo(this.x + 5, this.y + 15);  // 左侧
+        ctx.lineTo(this.x + 15, this.y);      // 左尾
+        ctx.lineTo(this.x + 25, this.y);      // 右尾
+        ctx.lineTo(this.x + 35, this.y + 15); // 右侧
+        ctx.closePath(); ctx.fill();
+
+        // 橙色座舱盖
+        ctx.fillStyle = "orange";
+        ctx.beginPath(); ctx.ellipse(this.x + 20, this.y + 20, 5, 8, 0, 0, Math.PI*2); ctx.fill();
+
+        // 两侧的黑色重炮管
+        ctx.fillStyle = "#111";
+        ctx.fillRect(this.x + 4, this.y + 15, 6, 20);
+        ctx.fillRect(this.x + 30, this.y + 15, 6, 20);
     }
     update() {
         this.y += 1.8 * diffMult; this.timer++;
@@ -389,10 +453,29 @@ class ShooterEnemy extends Enemy {
 class EliteShooter extends Enemy {
     constructor(x, y) { super(x, y, 45, 40, 3, 80); this.timer = 0; }
     draw(ctx) {
-        ctx.fillStyle = "rgb(180, 0, 0)"; 
-        // 简易圆角矩形
-        ctx.beginPath(); ctx.roundRect(this.x, this.y, 45, 30, 10); ctx.fill();
-        ctx.fillStyle = "orange"; ctx.fillRect(this.x+5, this.y+25, 5, 10); ctx.fillRect(this.x+35, this.y+25, 5, 10);
+        // ★ 重装堡垒机
+        // 红色重型装甲
+        ctx.fillStyle = "#900000";
+        ctx.beginPath();
+        ctx.moveTo(this.x + 22.5, this.y + 40);
+        ctx.lineTo(this.x, this.y + 20);
+        ctx.lineTo(this.x, this.y);
+        ctx.lineTo(this.x + 45, this.y);
+        ctx.lineTo(this.x + 45, this.y + 20);
+        ctx.closePath(); ctx.fill();
+
+        // 内部机械结构细节
+        ctx.fillStyle = "#333";
+        ctx.fillRect(this.x + 10, this.y + 5, 25, 15);
+
+        // 闪烁的金色核心
+        ctx.fillStyle = (this.timer % 10 < 5) ? "#FFD700" : "#FFA500";
+        ctx.beginPath(); ctx.arc(this.x + 22.5, this.y + 12, 6, 0, Math.PI*2); ctx.fill();
+
+        // 侧边武装发射器
+        ctx.fillStyle = "orange";
+        ctx.fillRect(this.x - 2, this.y + 10, 8, 20);
+        ctx.fillRect(this.x + 39, this.y + 10, 8, 20);
     }
     update() {
         this.y += 1.5 * diffMult; this.timer++;
@@ -413,9 +496,26 @@ class EliteShooter extends Enemy {
 class MeteorEnemy extends Enemy {
     constructor(x, y) { super(x, y, 40, 40, 5, 25); }
     draw(ctx) {
-        ctx.fillStyle = "rgb(105, 105, 105)";
-        ctx.beginPath(); ctx.moveTo(this.x+10, this.y); ctx.lineTo(this.x+30, this.y+5); ctx.lineTo(this.x+40, this.y+25); ctx.lineTo(this.x+20, this.y+40); ctx.lineTo(this.x, this.y+20); ctx.closePath();
-        ctx.fill(); ctx.strokeStyle = "darkgray"; ctx.stroke();
+        // ★ 突击飞船 (类似锯齿状的冲锋舰)
+        ctx.fillStyle = "#696969";
+        ctx.beginPath();
+        ctx.moveTo(this.x + 20, this.y + 40); // 尖锐冲撞角
+        ctx.lineTo(this.x + 5, this.y + 20);
+        ctx.lineTo(this.x - 5, this.y);       // 张开的飞翼
+        ctx.lineTo(this.x + 20, this.y + 10); // 尾部凹槽
+        ctx.lineTo(this.x + 45, this.y);
+        ctx.lineTo(this.x + 35, this.y + 20);
+        ctx.closePath(); 
+        ctx.fill(); 
+        
+        // 飞船轮廓描边
+        ctx.strokeStyle = "#A9A9A9"; 
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // 尾部推进器红光
+        ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
+        ctx.fillRect(this.x + 13, this.y, 14, 6);
     }
     update() { this.y += 4.5 * diffMult; }
 }
@@ -504,17 +604,51 @@ class OrbitGuard extends Enemy {
 
 class BossSplitPart extends Enemy {
     constructor(x, y, dir) {
-        super(x, y, 60, 60, 50, 400); this.initialDir = dir; this.timer = 0; this.spiralAngle = 0;
+        super(x, y, 50, 50, 50, 400); this.initialDir = dir; this.timer = 0; this.spiralAngle = 0;
         this.anchorX = (dir < 0) ? 80 : 320; this.anchorY = 120;
     }
     draw(ctx) {
+        // 原逻辑：isStationary 为 true 时，停在原地发射螺旋弹幕，我们将其视作“攻击状态”
         let isStationary = ((Math.floor(this.timer/200))%2 === 0) ^ (this.initialDir > 0);
-        let coreColor = isStationary ? "rgb(255, 60, 0)" : "rgb(0, 180, 255)";
-        let grad = ctx.createRadialGradient(this.x+30, this.y+30, 0, this.x+30, this.y+30, 30);
-        grad.addColorStop(0, "white"); grad.addColorStop(1, coreColor);
-        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(this.x+30, this.y+30, 30, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = "white"; ctx.beginPath(); ctx.arc(this.x+30, this.y+30, 20, 0, Math.PI*2); ctx.stroke();
         
+        // 1. 根据状态选择对应的贴图
+        let currentImg = isStationary ? boss2GuardAttackImg : boss2GuardImg;
+
+        // 判定中心点 (原代码是用 x+30, y+30 画的半径30的圆，所以中心是偏移30)
+        let cx = this.x + 30;
+        let cy = this.y + 30;
+
+        // 2. 检查图片是否加载完成
+        if (currentImg.complete) {
+            // 定义贴图绘制尺寸，可以比判定框（50x50）稍微大一点，增加压迫感
+            let dw = 90; 
+            let dh = 90;
+            let drawX = cx - dw / 2;
+            let drawY = cy - dh / 2;
+
+            ctx.save(); // 保存当前画布状态
+            
+            // 3. 镜像对称处理
+            // this.initialDir < 0 代表右半边，将其水平翻转，让左右分裂体看起来是对称的
+            if (this.initialDir < 0) {
+                ctx.translate(cx, cy); // 将画布原点移到中心
+                ctx.scale(-1, 1);      // 水平翻转
+                ctx.drawImage(currentImg, -dw / 2, -dh / 2, dw, dh);
+            } else {
+                ctx.drawImage(currentImg, drawX, drawY, dw, dh);
+            }
+            
+            ctx.restore(); // 恢复画布状态，防止影响其他元素的绘制
+        } else {
+            // 兜底方案：如果贴图还没加载出来，先画原来的圆圈
+            let coreColor = isStationary ? "rgb(255, 60, 0)" : "rgb(0, 180, 255)";
+            let grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 30);
+            grad.addColorStop(0, "white"); grad.addColorStop(1, coreColor);
+            ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = "white"; ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI*2); ctx.stroke();
+        }
+        
+        // 4. 绘制血条 (保持原样，放置在实体上方)
         ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-15, 60, 4);
         ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-15, 60*(this.hp/this.maxHp), 4);
     }
@@ -555,27 +689,64 @@ class BossEnemy extends Enemy {
     }
     draw(ctx) {
         if (this.isSplitTriggered) return;
+
+        // --- ★ 核心贴图代码 ---
+        if (this.level === 1 && boss1Img.complete) {
+            // 定义图片的显示尺寸（比判定框稍大，增加压迫感）
+            let drawW = 220; 
+            let drawH = 220;
+            // 计算偏移量，使图片中心对齐判定框中心
+            let drawX = this.x + this.w / 2 - drawW / 2;
+            let drawY = this.y + this.h / 2 - drawH / 2;
+
+            ctx.drawImage(boss1Img, drawX, drawY, drawW, drawH);
+        } 
+        else if(this.level === 2 && boss2BodyImg.complete) {
+            // 定义图片的显示尺寸（贴合你画的贴图）
+            let dw = 200; // 假设比第一关 Boss 还要稍微宽一点
+            let dh = 180;
+            // 计算偏移量，使图片中心对齐判定框中心 (判定框是 160x100)
+            let drawX = this.x + (this.w / 2) - (dw / 2);
+            let drawY = this.y + (this.h / 2) - (dh / 2);
+
+            ctx.drawImage(boss2BodyImg, drawX, drawY, dw, dh);
+
+        }
+        else {
+            // 如果是其他关卡或者图片没加载好，走原来的逻辑
+            this.drawOldSchool(ctx);
+        }
+
+        // --- 绘制血条 (放在图片上方) ---
+        ctx.fillStyle = "red"; 
+        ctx.fillRect(this.x, this.y - 25, 160, 8);
+        ctx.fillStyle = "green"; 
+        ctx.fillRect(this.x, this.y - 25, 160 * (this.hp / this.maxHp), 8);
+        ctx.strokeStyle = "white";
+        ctx.strokeRect(this.x, this.y - 25, 160, 8);
+
+        // --- 激光预警与渲染 (保留原有逻辑) ---
+        if (this.laserWarmup > 0) {
+            ctx.strokeStyle = "cyan"; // 换个颜色区分
+            if (this.timer % 4 < 2) { 
+                ctx.beginPath(); ctx.moveTo(this.lockedLaserX, this.y + 80); 
+                ctx.lineTo(this.lockedLaserX, 800); ctx.stroke(); 
+            }
+        }
+        if (this.laserActive > 0) {
+            ctx.fillStyle = "rgba(0, 255, 255, 0.5)"; // 青色大激光，反差大
+            ctx.fillRect(this.lockedLaserX - 35, this.y + 80, 70, 800);
+        }
+    }
+
+    // 将原本的几何体绘图封装，防止代码太乱
+    drawOldSchool(ctx) {
         let grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y+100);
         grad.addColorStop(0, "darkgray"); grad.addColorStop(1, "black");
         ctx.fillStyle = grad;
-        // 椭圆绘制
         ctx.beginPath(); ctx.ellipse(this.x+80, this.y+50, 80, 30, 0, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = this.phase===1 ? "blue" : (this.phase===2 ? "orange" : "red");
-        ctx.beginPath(); ctx.arc(this.x+80, this.y+40, 40, 0, Math.PI, true); ctx.fill(); // 半圆 arc倒置
-        
-        ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-15, 160, 8);
-        ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-15, 160*(this.hp/this.maxHp), 8);
-        
-        if (this.laserWarmup > 0) {
-            if (this.timer % 4 < 2) { ctx.beginPath(); ctx.moveTo(this.lockedLaserX, this.y+80); ctx.lineTo(this.lockedLaserX, 800); ctx.stroke(); }
-        }
-        if (this.laserActive > 0) {
-            let lw = (this.level===2) ? 100 : 70;
-            let lGrad = ctx.createLinearGradient(this.x+80-lw/2, 0, this.x+80+lw/2, 0);
-            lGrad.addColorStop(0, "rgba(255,0,0,0.7)"); lGrad.addColorStop(1, "rgba(255,255,255,0.47)");
-            ctx.fillStyle = lGrad; ctx.fillRect(this.lockedLaserX-lw/2, this.y+80, lw, 800);
-        }
     }
+
 update() {
         if (this.isSplitTriggered) return;
         if (this.y < 60) this.y += 2;
@@ -655,8 +826,12 @@ update() {
         
         if (this.level === 2 && hpPercent < 0.25 && !this.isSplitTriggered) {
             this.isSplitTriggered = true;
-            enemies.push(new BossSplitPart(this.x, this.y, 3)); enemies.push(new BossSplitPart(this.x+80, this.y, -3));
-            this.hp = 0;
+            this.hp = 0; // Boss 主体消失
+
+            // 在 Boss 原本的位置生成两个分裂部分
+            // 我们利用原本代码里的 Dir 来区分左右，3 和 -3 还可以用作贴图的旋转或偏移
+            enemies.push(new BossSplitPart(this.x, this.y, 3));      // 左半边
+            enemies.push(new BossSplitPart(this.x + 80, this.y, -3)); // 右半边
         }
     }
     
@@ -680,16 +855,45 @@ class StarshipBoss extends Enemy {
         this.laserStep = 0; this.phase1Timer = 0; this.laserWarmup = 0; this.laserActive = 0;
         this.spiralAngle = 0;
     }
-    draw(ctx) {
-        if (this.phase === 4) ctx.fillStyle = "rgb(80, 30, 30)";
-        else ctx.fillStyle = "rgb(50, 50, 70)";
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y); ctx.lineTo(this.x+130, this.y+120); ctx.lineTo(this.x+260, this.y); ctx.lineTo(this.x+200, this.y+60); ctx.lineTo(this.x+60, this.y+60);
-        ctx.closePath(); ctx.fill();
+draw(ctx) {
+        // --- ★ 绘制 Boss 贴图 ---
+        if (boss3Img.complete) {
+            // 定义图片的显示尺寸，比判定框（260x120）稍大一些，增加视觉压迫感
+            let drawW = 320; 
+            let drawH = 200;
+            // 计算偏移量，使图片中心对齐判定框中心
+            let drawX = this.x + this.w / 2 - drawW / 2;
+            let drawY = this.y + this.h / 2 - drawH / 2;
+
+            // 第四阶段（垂死挣扎）时给 Boss 加一个红色的滤镜效果或抖动
+            if (this.phase === 4) {
+                ctx.save();
+                ctx.translate(Math.random() * 4 - 2, Math.random() * 4 - 2); // 轻微抖动
+                // 绘制一层淡淡的红光背景
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = "red";
+                ctx.drawImage(boss3Img, drawX, drawY, drawW, drawH);
+                ctx.restore();
+            } else {
+                ctx.drawImage(boss3Img, drawX, drawY, drawW, drawH);
+            }
+        } else {
+            // 兜底：如果贴图没加载好，画原本的几何体
+            if (this.phase === 4) ctx.fillStyle = "rgb(80, 30, 30)";
+            else ctx.fillStyle = "rgb(50, 50, 70)";
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y); ctx.lineTo(this.x+130, this.y+120); 
+            ctx.lineTo(this.x+260, this.y); ctx.lineTo(this.x+200, this.y+60); 
+            ctx.lineTo(this.x+60, this.y+60);
+            ctx.closePath(); ctx.fill();
+        }
         
+        // --- 绘制血条 (置于顶层) ---
         ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-20, 260, 10);
         ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-20, 260*(this.hp/this.maxHp), 10);
+        ctx.strokeStyle = "white"; ctx.strokeRect(this.x, this.y-20, 260, 10);
         
+        // --- 激光预警与渲染 (保持原汁原味) ---
         if (this.phase === 1) {
             let lx = 20 + this.laserStep * 40, rx = 460 - this.laserStep * 40;
             if (this.laserWarmup > 0) {
@@ -847,6 +1051,7 @@ function startGame() {
 function takeDamage() {
     if (invincibilityFrame <= 0 && bombActiveTimer <= 0) {
         playerHP--;
+        if(playerHP==1){playerBomb++;}
         invincibilityFrame = 60;
         if (playerHP <= 0) gameState = 2;
         checkHighScore(); // ★新增：检查并保存最高分
@@ -997,8 +1202,8 @@ function draw() {
         ctx.fillText("上下左右选择/移动，Z开火，XBomb，Shift切换低速", 50, 600);
         
         ctx.font = "14px Arial"; ctx.fillStyle = "rgb(150, 150, 150)";
-        ctx.fillText("v1.0 - HTML5 Edition", 10, 720);
-        ctx.fillText("Author: Bingtangsoft", 320, 720);
+        ctx.fillText("v1.0.1 - HTML5 Edition", 10, 740);
+        ctx.fillText("Author: Bingtangsoft", 320, 740);
         return;
     }
     
@@ -1072,18 +1277,43 @@ function draw() {
         ctx.beginPath(); ctx.arc(playerX+20, playerY+20, radius, 0, Math.PI*2); ctx.fill();
     }
     
-    // 玩家
+
+// 玩家
     if (invincibilityFrame % 4 < 2 || bombActiveTimer > 0) {
-        ctx.fillStyle = "orange";
-        if (timerCount % 4 < 2) { ctx.beginPath(); ctx.ellipse(playerX+20, playerY+47, 5, 9, 0, 0, Math.PI*2); ctx.fill(); }
-        
-        ctx.fillStyle = "red";
-        ctx.beginPath(); ctx.moveTo(playerX+20, playerY); ctx.lineTo(playerX, playerY+40); ctx.lineTo(playerX+40, playerY+40); ctx.closePath(); ctx.fill();
-        ctx.fillRect(playerX+18, playerY+12, 4, 10);
-        
-        ctx.beginPath(); ctx.arc(playerX+19, playerY+19, 3, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(playerX+19.5, playerY+19.5, 2.5, 0, Math.PI*2); ctx.fill();
+    // 1. 定义判定点中心 (真理中心)
+    let cx = playerX + 17.5;
+    let cy = playerY + 17.5;
+
+    // 2. 绘制飞机图片
+    // 假设你的图片是 64x64 像素（你可以根据实际图片大小调整这里 dw, dh）
+    let dw = 80; // 绘制宽度
+    let dh = 80; // 绘制高度
+    
+    // 绘制位置计算：中心点减去宽高的一半，确保图片中心对齐判定点
+    ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
+
+    // 3. 灵魂判定点 (一定要保留，否则你看不清碰撞位置)
+    // 建议在 Shift 低速模式或被攻击时显示
+    ctx.fillStyle = "rgba(0, 255, 255, 0.8)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. 动态尾焰 (可选：如果图片自带火苗可以不画，不自带可以用代码补一个)
+    if (timerCount % 4 < 2) {
+        ctx.fillStyle = "#FFCC00";
+        ctx.beginPath();
+        ctx.moveTo(cx - 5, cy + 25);
+        ctx.lineTo(cx + 5, cy + 25);
+        ctx.lineTo(cx, cy + 35);
+        ctx.fill();
     }
+}
 
     // UI
     ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.fillText("HP:", 10, 50);
