@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 飞机大战 - 终极星舰版</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: 'SansSerif', 'Arial', sans-serif;
+        }
+        canvas {
+            background-color: rgb(15, 15, 35);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            /* 保证在高分屏下也不模糊 */
+            image-rendering: pixelated; 
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="480" height="800"></canvas>
+
+<script>
+/**
+ * HTML5 飞机大战 - 终极星舰版
+ * 移植自 Java Swing 版本，保证 40 FPS (25ms) 逻辑帧同步
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- 游戏全局状态 ---
+let gameState = 0; // 0=菜单，1=游戏中，2=死亡，3=胜利
+let isPaused = false;
+let menuSelection = 1;
+const diffNames = ["Easy(闭眼应对的程度)", "Normal(认真应对的程度)", "Hard(进阶级别的程度)", "Lunatic(魔神级别的程度)"];
+
+let diffMult = 1.0;
+let currentDiffMult = 1.0;
+
+let playerX = 220, playerY = 600, score = 0, currentLevel = 1, timerCount = 0;
+let playerHP = 3, maxPlayerHP = 3;
+let invincibilityFrame = 0;
+let playerBomb = 2, bombActiveTimer = 0;
+
+let bullets = [];
+let enemies = [];
+let items = [];
+
+let bossSpawned = false;
+
+
+// ★ 新增这行代码：从本地读取最高分，如果没有则默认是 0
+let highScore = localStorage.getItem('planeGameHighScore') || 0;
+
+// 按键状态
+const keys = {
+    ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
+    z: false, x: false, p: false, Shift: false
+};
+
+// 监听按键
+// 监听按键
+window.addEventListener('keydown', (e) => {
+    // ★新增：如果是方向键，阻止浏览器默认的滚动条滚动行为
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+    }
+
+    let k = e.key;
+    if (k === 'ArrowLeft') keys.ArrowLeft = true;
+    if (k === 'ArrowRight') keys.ArrowRight = true;
+    if (k === 'ArrowUp') keys.ArrowUp = true;
+    if (k === 'ArrowDown') keys.ArrowDown = true;
+    if (k.toLowerCase() === 'z') { keys.z = true; handleZPress(); }
+    if (k.toLowerCase() === 'x') { keys.x = true; handleXPress(); }
+    if (k.toLowerCase() === 'p') { keys.p = true; handlePPress(); }
+    if (k === 'Shift') keys.Shift = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    let k = e.key;
+    if (k === 'ArrowLeft') keys.ArrowLeft = false;
+    if (k === 'ArrowRight') keys.ArrowRight = false;
+    if (k === 'ArrowUp') keys.ArrowUp = false;
+    if (k === 'ArrowDown') keys.ArrowDown = false;
+    if (k.toLowerCase() === 'z') keys.z = false;
+    if (k.toLowerCase() === 'x') keys.x = false;
+    if (k.toLowerCase() === 'p') keys.p = false;
+    if (k === 'Shift') keys.Shift = false;
+});
+
+function handleZPress() {
+    if (gameState === 0) startGame();
+    else if (gameState === 2 || gameState === 3) {
+        gameState = 0;
+    }
+}
+
+function handleXPress() {
+    if (gameState === 1 && !isPaused) {
+        if (playerBomb > 0 && bombActiveTimer <= 0) {
+            playerBomb--;
+            bombActiveTimer = 60;
+        }
+    }
+}
+
+function handlePPress() {
+    if (gameState === 1) isPaused = !isPaused;
+}
+
+// 菜单选择处理
+window.addEventListener('keydown', (e) => {
+    if (gameState === 0) {
+        if (e.key === 'ArrowUp') menuSelection = (menuSelection > 0) ? menuSelection - 1 : 3;
+        if (e.key === 'ArrowDown') menuSelection = (menuSelection < 3) ? menuSelection + 1 : 0;
+    }
+});
+
+// --- 工具函数 ---
+function rectIntersect(r1, r2) {
+    return !(r2.x > r1.x + r1.w || 
+             r2.x + r2.w < r1.x || 
+             r2.y > r1.y + r1.h ||
+             r2.y + r2.h < r1.y);
+}
+
+function darkenColor(cStr) {
+    // 简易颜色加深映射，针对本游戏中用到的颜色
+    const map = {
+        'magenta': '#8b008b', 'cyan': '#008b8b', 'orange': '#cc5500', 
+        'pink': '#ff69b4', 'yellow': '#b8860b', 'red': '#8b0000',
+        '#32b432': '#195a19', 'green': '#006400'
+    };
+    return map[cStr.toLowerCase()] || '#555';
+}
+
+function randomNextDouble() { return Math.random(); }
+function randomNextInt(max) { return Math.floor(Math.random() * max); }
+function randomNextBoolean() { return Math.random() < 0.5; }
+
+// --- 类定义 ---
+
+class Item {
+    constructor(x, y, type) {
+        this.x = x; this.y = y; this.type = type;
+        this.w = 20; this.h = 20;
+    }
+    update() { this.y += 2.5; }
+    draw(ctx) {
+        ctx.font = "bold 16px Arial";
+        if (this.type === 0) {
+            ctx.fillStyle = "rgb(0, 200, 0)";
+            ctx.fillRect(this.x, this.y, 20, 20);
+            ctx.fillStyle = "white";
+            ctx.fillText("B", this.x + 5, this.y + 16);
+        } else {
+            ctx.fillStyle = "pink";
+            ctx.beginPath(); ctx.arc(this.x + 10, this.y + 10, 10, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.fillText("H", this.x + 5, this.y + 16);
+        }
+    }
+    getRect() { return {x: this.x, y: this.y, w: 20, h: 20}; }
+}
+
+class Bullet {
+    constructor(x, y, w, h, dx, dy, color, isEnemy) {
+        this.x = x; this.y = y; this.w = w; this.h = h;
+        this.dx = dx; this.dy = dy; this.color = color;
+        this.isEnemyBullet = isEnemy;
+        if (!isEnemy) this.type = 0;
+        else {
+            let c = color.toLowerCase();
+            if (c==='magenta' || c==='cyan' || c==='orange' || c==='pink' || c==='#32b432') this.type = 1;
+            else this.type = 2;
+        }
+    }
+    update() { this.x += this.dx; this.y += this.dy; }
+    getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
+    draw(ctx) {
+        if (this.type === 0) {
+            ctx.fillStyle = "white";
+            ctx.fillRect(this.x + 2, this.y, this.w - 4, this.h);
+            ctx.strokeStyle = this.color;
+            ctx.strokeRect(this.x + 2, this.y, this.w - 4, this.h);
+        } else if (this.type === 1) {
+            let radius = this.w / 2.0;
+            let grad = ctx.createRadialGradient(this.x + radius, this.y + radius, 0, this.x + radius, this.y + radius, radius);
+            grad.addColorStop(0.0, 'white');
+            grad.addColorStop(0.4, this.color);
+            grad.addColorStop(1.0, darkenColor(this.color));
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(this.x + radius, this.y + radius, radius, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.47)";
+            ctx.stroke();
+        } else {
+            ctx.save();
+            let angle = Math.atan2(this.dy, this.dx);
+            ctx.translate(this.x + this.w/2, this.y + this.h/2);
+            ctx.rotate(angle);
+            let hw = this.w / 2 + 4, hh = this.h / 2;
+            ctx.beginPath();
+            ctx.moveTo(-hw, 0); ctx.lineTo(0, -hh); ctx.lineTo(hw, 0); ctx.lineTo(0, hh); ctx.closePath();
+            ctx.fillStyle = "white"; ctx.fill();
+            ctx.lineWidth = 2; ctx.strokeStyle = this.color; ctx.stroke();
+            ctx.restore();
+        }
+    }
+}
+
+class Enemy {
+    constructor(x, y, w, h, hp, score) {
+        this.x = x; this.y = y; this.w = w; this.h = h;
+        this.hp = hp; this.maxHp = hp; this.scoreValue = score;
+    }
+    draw(ctx) {}
+    update() {}
+    getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
+    checkHitPlayer(pRect) { return rectIntersect(this.getRect(), pRect); }
+    fireSpread(bx, by, bdx, bdy, spreadX, spreadY, c) {
+        let rx = (randomNextDouble() * 2 - 1) * spreadX;
+        let ry = (randomNextDouble() * 2 - 1) * spreadY;
+        bullets.push(new Bullet(bx, by, 8, 8, bdx + rx, bdy + ry, c, true));
+    }
+}
+
+// 具体敌人实现...
+class NormalEnemy extends Enemy {
+    constructor(x, y) { super(x, y, 35, 30, 1, 10); }
+    draw(ctx) {
+        let grad = ctx.createLinearGradient(this.x, this.y, this.x + 35, this.y);
+        grad.addColorStop(0, "gray"); grad.addColorStop(1, "darkgray");
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x+35, this.y); ctx.lineTo(this.x+17, this.y+30); ctx.fill();
+    }
+    update() { this.y += 3 * diffMult; }
+}
+
+class ShooterEnemy extends Enemy {
+    constructor(x, y) { super(x, y, 40, 40, 3, 50); this.timer = 0; }
+    draw(ctx) {
+        ctx.fillStyle = "rgb(200, 100, 0)"; ctx.fillRect(this.x+5, this.y+10, 30, 15);
+        ctx.fillStyle = "black"; ctx.fillRect(this.x+15, this.y, 10, 30);
+    }
+    update() {
+        this.y += 1.8 * diffMult; this.timer++;
+        let rate = Math.max(20, Math.floor(110 / diffMult));
+        if (this.timer % rate === 0) bullets.push(new Bullet(this.x+15, this.y+35, 8, 8, 0, 3*diffMult, 'orange', true));
+    }
+}
+
+class EliteShooter extends Enemy {
+    constructor(x, y) { super(x, y, 45, 40, 3, 80); this.timer = 0; }
+    draw(ctx) {
+        ctx.fillStyle = "rgb(180, 0, 0)"; 
+        // 简易圆角矩形
+        ctx.beginPath(); ctx.roundRect(this.x, this.y, 45, 30, 10); ctx.fill();
+        ctx.fillStyle = "orange"; ctx.fillRect(this.x+5, this.y+25, 5, 10); ctx.fillRect(this.x+35, this.y+25, 5, 10);
+    }
+    update() {
+        this.y += 1.5 * diffMult; this.timer++;
+        let rate = Math.max(20, Math.floor(90 / diffMult));
+        if (this.timer % rate === 0) {
+            let s = diffMult, sDx = 0.6, sDy = 0.4;
+            this.fireSpread(this.x+20, this.y+35, -1.2*s, 3.0*s, sDx, sDy, 'pink');
+            this.fireSpread(this.x+10, this.y+35, 0, 3.5*s, sDx, sDy, 'pink');
+            this.fireSpread(this.x+30, this.y+35, 1.2*s, 3.0*s, sDx, sDy, 'pink');
+            if (diffMult > 1.2) {
+                this.fireSpread(this.x+25, this.y+35, -2.4*s, 2.5*s, sDx, sDy, 'pink');
+                this.fireSpread(this.x+15, this.y+35, 2.4*s, 2.5*s, sDx, sDy, 'pink');
+            }
+        }
+    }
+}
+
+class MeteorEnemy extends Enemy {
+    constructor(x, y) { super(x, y, 40, 40, 5, 25); }
+    draw(ctx) {
+        ctx.fillStyle = "rgb(105, 105, 105)";
+        ctx.beginPath(); ctx.moveTo(this.x+10, this.y); ctx.lineTo(this.x+30, this.y+5); ctx.lineTo(this.x+40, this.y+25); ctx.lineTo(this.x+20, this.y+40); ctx.lineTo(this.x, this.y+20); ctx.closePath();
+        ctx.fill(); ctx.strokeStyle = "darkgray"; ctx.stroke();
+    }
+    update() { this.y += 4.5 * diffMult; }
+}
+
+class SwarmMinion extends Enemy {
+    constructor(x, y) { super(x, y, 20, 20, 1, 10); this.timer = 0; }
+    draw(ctx) {
+        ctx.fillStyle = "lightgray"; ctx.beginPath(); ctx.arc(this.x+10, this.y+10, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "red"; ctx.fillRect(this.x+8, this.y+5, 4, 10);
+    }
+    update() {
+        this.y += 2.5 * diffMult; this.timer++;
+        if (this.timer === 40) {
+            let count = (menuSelection === 0) ? 1 : (menuSelection === 1) ? 2 : (menuSelection === 2) ? 3 : 5;
+            let baseAngle = Math.atan2((playerY+20)-(this.y+10), (playerX+20)-(this.x+10));
+            for(let i=0; i<count; i++) {
+                let angle = baseAngle + (i - (count-1)/2.0) * 0.3;
+                bullets.push(new Bullet(this.x+10, this.y+10, 6, 6, Math.cos(angle)*4, Math.sin(angle)*4, 'magenta', true));
+            }
+        }
+    }
+}
+
+class YamatoEnemy extends Enemy {
+    constructor(x, y, isSummon) {
+        super(x, y, 50, 50, isSummon ? 50 : 5, isSummon ? 0 : 100);
+        this.isSummon = isSummon; this.timer = 0; this.laserActive = 0;
+    }
+    draw(ctx) {
+        ctx.fillStyle = "rgb(60, 80, 120)"; ctx.fillRect(this.x, this.y, 50, 40);
+        ctx.fillStyle = "cyan"; ctx.fillRect(this.x+15, this.y+30, 20, 20);
+        let rate = this.isSummon ? 120 : Math.floor(150 / currentDiffMult);
+        let localTimer = this.timer % rate;
+        if (localTimer > rate - 40 && this.laserActive === 0) {
+            ctx.strokeStyle = "red";
+            if (this.timer % 4 < 2) { ctx.beginPath(); ctx.moveTo(this.x+25, this.y+50); ctx.lineTo(this.x+25, 800); ctx.stroke(); }
+        }
+        if (this.laserActive > 0) {
+            ctx.fillStyle = "rgba(255, 50, 50, 0.86)"; ctx.fillRect(this.x+10, this.y+50, 30, 800);
+        }
+    }
+    update() {
+        let rate = this.isSummon ? 120 : Math.floor(150 / diffMult);
+        let localTimer = this.timer % rate;
+        if (!this.isSummon) {
+            if (localTimer < rate - 60 && this.y < 300) { this.x += (playerX - this.x)*0.04; this.y += 1.5 * diffMult; }
+            else this.y += 0.5;
+        }
+        this.timer++;
+        if (localTimer === rate - 1) {
+            this.laserActive = 20;
+            for (let i=0; i<12; i++) {
+                let angle = i * Math.PI / 6;
+                bullets.push(new Bullet(this.x+25, this.y+25, 8, 8, Math.cos(angle)*3, Math.sin(angle)*3, 'orange', true));
+            }
+        }
+        if (this.laserActive > 0) this.laserActive--;
+    }
+    checkHitPlayer(pRect) {
+        if (super.checkHitPlayer(pRect)) return true;
+        if (this.laserActive > 0 && rectIntersect({x:this.x+10, y:this.y+50, w:30, h:800}, pRect)) return true;
+        return false;
+    }
+}
+
+class OrbitGuard extends Enemy {
+    constructor(master, startAngle) {
+        super(0, 0, 25, 25, 30, 50); this.master = master; this.angle = startAngle; this.respawnTimer = 0;
+    }
+    draw(ctx) {
+        if (this.hp > 0) {
+            ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.arc(this.x+12.5, this.y+12.5, 12.5, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = "white"; ctx.strokeRect(this.x+5, this.y+5, 15, 15);
+        }
+    }
+    update() {
+        if (this.hp <= 0) { if (++this.respawnTimer > 200) { this.hp = this.maxHp; this.respawnTimer = 0; } return; }
+        this.angle += 0.04; this.x = this.master.x + 70 + Math.cos(this.angle)*110; this.y = this.master.y + 40 + Math.sin(this.angle)*110;
+        let rate = Math.max(20, Math.floor(90 / diffMult));
+        if (timerCount % rate === 0) {
+            let ang = Math.atan2((playerY+20)-(this.y+10), (playerX+20)-(this.x+10));
+            bullets.push(new Bullet(this.x+10, this.y+10, 8, 8, Math.cos(ang)*4.5*diffMult, Math.sin(ang)*4.5*diffMult, 'green', true));
+        }
+    }
+}
+
+class BossSplitPart extends Enemy {
+    constructor(x, y, dir) {
+        super(x, y, 60, 60, 50, 400); this.initialDir = dir; this.timer = 0; this.spiralAngle = 0;
+        this.anchorX = (dir < 0) ? 80 : 320; this.anchorY = 120;
+    }
+    draw(ctx) {
+        let isStationary = ((Math.floor(this.timer/200))%2 === 0) ^ (this.initialDir > 0);
+        let coreColor = isStationary ? "rgb(255, 60, 0)" : "rgb(0, 180, 255)";
+        let grad = ctx.createRadialGradient(this.x+30, this.y+30, 0, this.x+30, this.y+30, 30);
+        grad.addColorStop(0, "white"); grad.addColorStop(1, coreColor);
+        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(this.x+30, this.y+30, 30, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "white"; ctx.beginPath(); ctx.arc(this.x+30, this.y+30, 20, 0, Math.PI*2); ctx.stroke();
+        
+        ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-15, 60, 4);
+        ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-15, 60*(this.hp/this.maxHp), 4);
+    }
+    update() {
+        this.timer++; let s = diffMult, cx = this.x+30, cy = this.y+30;
+        let isStationary = ((Math.floor(this.timer/200))%2 === 0) ^ (this.initialDir > 0);
+        if (isStationary) {
+            this.x += (this.anchorX - this.x)*0.04; this.y += (this.anchorY - this.y)*0.04;
+            if (this.timer % Math.max(5, Math.floor(12/s)) === 0) {
+                this.spiralAngle += 0.15 * s * Math.sign(this.initialDir);
+                let ways = Math.max(8, Math.floor(12*s));
+                for(let i=0; i<ways; i++) {
+                    let ang = this.spiralAngle + i*(Math.PI*2/ways);
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(ang)*3, Math.sin(ang)*3, 'orange', true));
+                }
+            }
+        } else {
+            let px = playerX+20, py = playerY+20, dx = px-cx, dy = py-cy, dist = Math.sqrt(dx*dx+dy*dy);
+            if (dist > 0) {
+                let safeDist = 180, ix = px - (dx/dist)*safeDist - 30, iy = py - (dy/dist)*safeDist - 30;
+                this.x += (ix - this.x)*0.03*s; this.y += (iy - this.y)*0.03*s;
+            }
+            if (this.timer % Math.max(25, Math.floor(50/s)) === 0) {
+                let ang = Math.atan2(py-cy, px-cx);
+                bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(ang)*5.5, Math.sin(ang)*5.5, 'cyan', true));
+            }
+        }
+    }
+}
+
+class BossEnemy extends Enemy {
+    constructor(x, y, level) {
+        super(x, y, 160, 100, (level===1?120:150), 1000);
+        this.level = level; this.targetX = 160; this.timer = 0; this.phase = 1;
+        this.laserWarmup = 0; this.laserActive = 0; this.spiralAngle = 0;
+        this.guards = []; this.isSplitTriggered = false;
+    }
+    draw(ctx) {
+        if (this.isSplitTriggered) return;
+        let grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y+100);
+        grad.addColorStop(0, "darkgray"); grad.addColorStop(1, "black");
+        ctx.fillStyle = grad;
+        // 椭圆绘制
+        ctx.beginPath(); ctx.ellipse(this.x+80, this.y+50, 80, 30, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = this.phase===1 ? "blue" : (this.phase===2 ? "orange" : "red");
+        ctx.beginPath(); ctx.arc(this.x+80, this.y+40, 40, 0, Math.PI, true); ctx.fill(); // 半圆 arc倒置
+        
+        ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-15, 160, 8);
+        ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-15, 160*(this.hp/this.maxHp), 8);
+        
+        if (this.laserWarmup > 0) {
+            ctx.strokeStyle = "red";
+            if (this.timer % 4 < 2) { ctx.beginPath(); ctx.moveTo(this.x+80, this.y+80); ctx.lineTo(this.x+80, 800); ctx.stroke(); }
+        }
+        if (this.laserActive > 0) {
+            let lw = (this.level===2) ? 140 : 90;
+            let lGrad = ctx.createLinearGradient(this.x+80-lw/2, 0, this.x+80+lw/2, 0);
+            lGrad.addColorStop(0, "rgba(255,0,0,0.7)"); lGrad.addColorStop(1, "rgba(255,255,255,0.47)");
+            ctx.fillStyle = lGrad; ctx.fillRect(this.x+80-lw/2, this.y+80, lw, 800);
+        }
+    }
+    update() {
+        if (this.isSplitTriggered) return;
+        if (this.y < 60) this.y += 2;
+        else {
+            if (Math.abs(this.x - this.targetX) < 10 || this.timer % 120 === 0) this.targetX = randomNextInt(260);
+            this.x += (this.targetX - this.x)*0.03;
+        }
+        this.timer++;
+        let hpPercent = this.hp / this.maxHp, s = diffMult, cx = this.x+80, cy = this.y+50;
+        this.phase = (hpPercent>0.65) ? 1 : (hpPercent>0.3) ? 2 : 3;
+        let diff = menuSelection, waves = diff + 1;
+        
+        if (this.phase === 1) {
+            if (this.timer % Math.max(3, Math.floor(6/s)) === 0) {
+                this.spiralAngle += 0.15*s; let spd = 3.5;
+                for(let w=0; w<waves; w++) {
+                    let offset = w * (Math.PI/waves);
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(this.spiralAngle+offset)*spd, Math.sin(this.spiralAngle+offset)*spd, 'magenta', true));
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(-this.spiralAngle+Math.PI+offset)*spd, Math.sin(-this.spiralAngle+Math.PI+offset)*spd, 'cyan', true));
+                }
+            }
+            let aimRate = Math.floor(70/s);
+            if (this.timer % aimRate < waves * 6 && this.timer % 6 === 0) {
+                let ang = Math.atan2((playerY+20)-cy, (playerX+20)-cx);
+                let spread = (diff===0) ? 1 : (diff===3) ? 5 : 3;
+                let halfSpread = Math.floor(spread/2);
+                for(let i = -halfSpread; i <= halfSpread; i++) {
+                    bullets.push(new Bullet(cx, cy, 12, 12, Math.cos(ang+i*0.2)*5, Math.sin(ang+i*0.2)*5, 'yellow', true));
+                }
+            }
+        }
+        else if (this.phase === 2) {
+            if (this.timer % 120 === 0) this.laserWarmup = 40;
+            let ringRate = Math.max(35, Math.floor(60/s));
+            if (this.timer % ringRate < waves * 8 && this.timer % 8 === 0) {
+                let count = 12 + diff * 6;
+                let offset = (this.timer % 16 === 0) ? 0 : (Math.PI/count);
+                for(let i=0; i<count; i++) {
+                    let ang = offset + i*(Math.PI*2/count);
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(ang)*2.8, Math.sin(ang)*2.8, 'orange', true));
+                }
+            }
+        }
+        else if (this.phase === 3) {
+            if (this.timer % 80 === 0 && this.laserWarmup===0 && this.laserActive===0) this.laserWarmup = 25;
+            if (this.timer % Math.max(1, 4-diff) === 0) {
+                let rAng = Math.random()*Math.PI*2, rSpd = 1.5+Math.random()*3*s;
+                bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
+            }
+            let burstRate = Math.floor(60/s);
+            if (this.timer % burstRate < waves * 5 && this.timer % 5 === 0) {
+                let bAng = Math.atan2((playerY+20)-cy, (playerX+20)-cx);
+                let ways = 1 + diff*2, halfWays = Math.floor(ways/2);
+                for(let i = -halfWays; i <= halfWays; i++) {
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(bAng+i*0.15)*4.5, Math.sin(bAng+i*0.15)*4.5, 'red', true));
+                }
+            }
+        }
+        
+        if (this.level === 2 && this.guards.length === 0) {
+            this.guards.push(new OrbitGuard(this, 0)); this.guards.push(new OrbitGuard(this, Math.PI));
+        }
+        for(let g of this.guards) g.update();
+        
+        if (this.laserWarmup > 0 && --this.laserWarmup === 0) this.laserActive = 30;
+        if (this.laserActive > 0) this.laserActive--;
+        
+        if (this.level === 2 && hpPercent < 0.25 && !this.isSplitTriggered) {
+            this.isSplitTriggered = true;
+            enemies.push(new BossSplitPart(this.x, this.y, 3)); enemies.push(new BossSplitPart(this.x+80, this.y, -3));
+            this.hp = 0;
+        }
+    }
+    checkHitPlayer(pRect) {
+        if (this.isSplitTriggered) return false;
+        if (rectIntersect({x:this.x+20, y:this.y+20, w:120, h:60}, pRect)) return true;
+        for(let g of this.guards) if (g.hp>0 && g.checkHitPlayer(pRect)) return true;
+        if (this.laserActive > 0) {
+            let lw = (this.level===2)?140:90;
+            if (rectIntersect({x:this.x+80-lw/2, y:this.y+80, w:lw, h:800}, pRect)) return true;
+        }
+        return false;
+    }
+}
+
+class StarshipBoss extends Enemy {
+    constructor(x, y) {
+        super(x, y, 260, 120, 360, 10000);
+        this.timer = 0; this.phase = 1; this.phase3Summoned = false;
+        this.laserStep = 0; this.phase1Timer = 0; this.laserWarmup = 0; this.laserActive = 0;
+        this.spiralAngle = 0;
+    }
+    draw(ctx) {
+        if (this.phase === 4) ctx.fillStyle = "rgb(80, 30, 30)";
+        else ctx.fillStyle = "rgb(50, 50, 70)";
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y); ctx.lineTo(this.x+130, this.y+120); ctx.lineTo(this.x+260, this.y); ctx.lineTo(this.x+200, this.y+60); ctx.lineTo(this.x+60, this.y+60);
+        ctx.closePath(); ctx.fill();
+        
+        ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-20, 260, 10);
+        ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-20, 260*(this.hp/this.maxHp), 10);
+        
+        if (this.phase === 1) {
+            let lx = 20 + this.laserStep * 40, rx = 460 - this.laserStep * 40;
+            if (this.laserWarmup > 0) {
+                ctx.strokeStyle = "red";
+                if (this.timer % 4 < 2) {
+                    ctx.beginPath(); ctx.moveTo(lx, this.y+60); ctx.lineTo(lx, 800);
+                    ctx.moveTo(rx, this.y+60); ctx.lineTo(rx, 800); ctx.stroke();
+                }
+            } else if (this.laserActive > 0) {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.7)";
+                ctx.fillRect(lx-10, this.y+60, 20, 800); ctx.fillRect(rx-10, this.y+60, 20, 800);
+            }
+        }
+    }
+    update() {
+        if (this.y < 20) { this.y += 1; return; }
+        this.timer++;
+        let hpPercent = this.hp/this.maxHp, s = diffMult;
+        this.phase = (hpPercent>0.75)?1 : (hpPercent>0.5)?2 : (hpPercent>0.25)?3 : 4;
+        let cx = this.x+130, cy = this.y+60, px = playerX+20, py = playerY+20;
+        let diff = menuSelection, waves = diff+1;
+        
+        let disguisedSnipeRate = Math.max(15, Math.floor(75/s));
+        if (this.timer % disguisedSnipeRate === 0) {
+            let baseAngle = Math.atan2(py-cy, px-cx), count = Math.floor(2+2*s);
+            for(let i=0; i<count; i++) {
+                let angleNoise = (Math.random()*0.8 - 0.4);
+                let speed = 2.0*s + Math.random()*3.0;
+                bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(baseAngle+angleNoise)*speed, Math.sin(baseAngle+angleNoise)*speed, '#32b432', true));
+            }
+        }
+        
+        if (this.phase === 1) {
+            let spiralRate = Math.max(3, Math.floor(6/s));
+            if (this.timer % spiralRate === 0) {
+                this.spiralAngle += 0.15*s; let arms = 1+diff;
+                for(let w=0; w<arms; w++) {
+                    let offset = w*(Math.PI/arms);
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(this.spiralAngle+offset)*3.5, Math.sin(this.spiralAngle+offset)*3.5, 'magenta', true));
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(-this.spiralAngle+Math.PI+offset)*3.5, Math.sin(-this.spiralAngle+Math.PI+offset)*3.5, 'cyan', true));
+                }
+            }
+            this.phase1Timer++;
+            if (this.phase1Timer === 1) this.laserWarmup = Math.max(15, Math.floor(30/s));
+            if (this.laserWarmup > 0) {
+                this.laserWarmup--; if (this.laserWarmup === 0) this.laserActive = 15;
+            } else if (this.laserActive > 0) {
+                this.laserActive--;
+                if (this.laserActive === 0) {
+                    let lx = 20+this.laserStep*40, rx = 460-this.laserStep*40;
+                    let angL = Math.atan2(py-cy, lx-cx), angR = Math.atan2(py-cy, rx-cx);
+                    let ways = diff===0?1:3, halfWays = Math.floor(ways/2);
+                    for(let i=-halfWays; i<=halfWays; i++) {
+                        bullets.push(new Bullet(lx, cy, 12, 12, Math.cos(angL+i*0.15)*4.5, Math.sin(angL+i*0.15)*4.5, 'magenta', true));
+                        bullets.push(new Bullet(rx, cy, 12, 12, Math.cos(angR+i*0.15)*4.5, Math.sin(angR+i*0.15)*4.5, 'magenta', true));
+                    }
+                    this.laserStep++;
+                    if (this.laserStep > 5) { this.laserStep=0; this.phase1Timer = -60; }
+                    else { this.phase1Timer = 0; }
+                }
+            }
+        }
+        else if (this.phase === 2) {
+            if (this.timer % 12 === 0) {
+                for(let w=0; w<waves; w++) {
+                    bullets.push(new Bullet(cx - 30*w, cy+40, 8, 8, Math.sin(this.timer*0.1)*3, 4*s, 'cyan', true));
+                    bullets.push(new Bullet(cx + 30*w, cy+40, 8, 8, Math.cos(this.timer*0.1)*3, 4*s, 'cyan', true));
+                }
+            }
+            let ringRate = Math.max(30, Math.floor(50/s));
+            if (this.timer % ringRate < waves * 8 && this.timer % 8 === 0) {
+                let count = 16 + diff*8;
+                let offset = (this.timer%16===0)?0:(Math.PI/count);
+                for(let i=0; i<count; i++) {
+                    let ang = offset + i*(Math.PI*2/count);
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(ang)*3.2, Math.sin(ang)*3.2, 'orange', true));
+                }
+            }
+        }
+        else if (this.phase === 3) {
+            if (!this.phase3Summoned) {
+                enemies.push(new YamatoEnemy(this.x-10, this.y+130, true));
+                enemies.push(new YamatoEnemy(this.x+220, this.y+130, true));
+                enemies.push(new YamatoEnemy(this.x+40, this.y+220, true));
+                enemies.push(new YamatoEnemy(this.x+170, this.y+220, true));
+                this.phase3Summoned = true;
+            }
+            if (this.timer % 8 === 0) {
+                this.spiralAngle += (Math.floor(this.timer/150)%2===0?0.25:-0.25)*s;
+                for(let w=0; w<waves; w++) {
+                    let offset = w*(Math.PI/waves);
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(this.spiralAngle+offset)*4, Math.sin(this.spiralAngle+offset)*4, 'yellow', true));
+                }
+            }
+            if (this.timer % Math.max(1, 5-diff) === 0) {
+                let rAng = Math.random()*Math.PI*2, rSpd = 1.5+Math.random()*3*s;
+                bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
+            }
+            let aimRate = Math.floor(60/s);
+            if (this.timer % aimRate < waves * 6 && this.timer % 6 === 0) {
+                let bAng = Math.atan2(py-cy, px-cx);
+                let ways = 1+diff*2, halfWays = Math.floor(ways/2);
+                for(let i=-halfWays; i<=halfWays; i++) {
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(bAng+i*0.2)*4.5, Math.sin(bAng+i*0.2)*4.5, 'red', true));
+                }
+            }
+        }
+        else if (this.phase === 4) {
+            if (this.timer % Math.max(15, 40 - diff*10) === 0) {
+                enemies.push(new MeteorEnemy(this.x+20+Math.random()*220, cy));
+            }
+            if (this.timer % Math.max(3, Math.floor(12/s)) === 0) {
+                this.spiralAngle += 0.15*s; let ways = 8+diff*4;
+                for(let i=0; i<ways; i++) {
+                    let ang = this.spiralAngle + i*(Math.PI*2/ways);
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(ang)*3.5, Math.sin(ang)*3.5, 'orange', true));
+                }
+            }
+            let finalRate = Math.max(25, Math.floor(50/s));
+            if (this.timer % finalRate < waves * 5 && this.timer % 5 === 0) {
+                let ang = Math.atan2(py-cy, px-cx);
+                let ways = 3+diff*2, halfWays = Math.floor(ways/2);
+                for(let i=-halfWays; i<=halfWays; i++) {
+                    bullets.push(new Bullet(cx, cy, 12, 12, Math.cos(ang+i*0.1)*7.0, Math.sin(ang+i*0.1)*7.0, 'cyan', true));
+                }
+            }
+        }
+    }
+    checkHitPlayer(pRect) {
+        if (super.checkHitPlayer(pRect)) return true;
+        if (this.phase === 1 && this.laserActive > 0) {
+            let lx = 20 + this.laserStep * 40, rx = 460 - this.laserStep * 40;
+            if (rectIntersect({x:lx-10, y:this.y+60, w:20, h:800}, pRect)) return true;
+            if (rectIntersect({x:rx-10, y:this.y+60, w:20, h:800}, pRect)) return true;
+        }
+        return false;
+    }
+}
+
+// --- 游戏主逻辑 ---
+
+function startGame() {
+    diffMult = (menuSelection===0)?1.0 : (menuSelection===1)?1.5 : (menuSelection===2)?1.8 : 2.2;
+    currentDiffMult = diffMult;
+    maxPlayerHP = (menuSelection===0)?6 : (menuSelection===1)?5 : 4;
+    playerHP = maxPlayerHP;
+    playerBomb = 2; bombActiveTimer = 0;
+    playerX = 220; playerY = 600;
+    score = 0; currentLevel = 1; timerCount = 0;
+    invincibilityFrame = 0; bossSpawned = false; isPaused = false;
+    bullets = []; enemies = []; items = [];
+    gameState = 1;
+}
+
+function takeDamage() {
+    if (invincibilityFrame <= 0 && bombActiveTimer <= 0) {
+        playerHP--;
+        invincibilityFrame = 60;
+        if (playerHP <= 0) gameState = 2;
+        checkHighScore(); // ★新增：检查并保存最高分
+    }
+
+}
+// ★新增一个检查最高分的函数
+function checkHighScore() {
+    if (score > highScore) {
+        highScore = score;
+        // 保存到浏览器的 LocalStorage 中
+        localStorage.setItem('planeGameHighScore', highScore);
+    }
+}
+
+function update() {
+    if (gameState !== 1 || isPaused) return;
+    
+    timerCount++;
+    if (invincibilityFrame > 0) invincibilityFrame--;
+    
+    // BOMB 逻辑
+    if (bombActiveTimer > 0) {
+        bombActiveTimer--;
+        bullets = bullets.filter(b => !b.isEnemyBullet);
+        if (timerCount % 5 === 0) {
+            for(let en of enemies) en.hp -= 1;
+        }
+    }
+    
+    let speed = keys.Shift ? 3 : 7;
+    if (keys.ArrowLeft && playerX > 0) playerX -= speed;
+    if (keys.ArrowRight && playerX < 440) playerX += speed; // Canvas 480 - width 40 = 440
+    if (keys.ArrowUp && playerY > 0) playerY -= speed;
+    if (keys.ArrowDown && playerY < 760) playerY += speed;
+    
+    if (keys.z && timerCount % 5 === 0) {
+        bullets.push(new Bullet(playerX+15, playerY, 8, 12, 0, -12, 'yellow', false));
+    }
+    
+    // 刷怪逻辑
+    if (!bossSpawned) {
+        if (currentLevel === 1 && score >= 300) { enemies.push(new BossEnemy(150, -100, 1)); bossSpawned = true; }
+        else if (currentLevel === 2 && score >= 2500) { enemies.push(new BossEnemy(150, -100, 2)); bossSpawned = true; }
+        else if (currentLevel === 3 && score >= 6000) { enemies.push(new StarshipBoss(110, -150)); bossSpawned = true; }
+        else {
+            let spawnRate = Math.max(15, Math.floor(60/diffMult));
+            if (timerCount % spawnRate === 0) {
+                let rx = randomNextInt(400);
+                if (currentLevel === 1) {
+                    enemies.push(randomNextBoolean() ? new NormalEnemy(rx, -30) : new ShooterEnemy(rx, -40));
+                } else if (currentLevel === 2) {
+                    enemies.push((randomNextInt(10)<3) ? new NormalEnemy(rx, -30) : new EliteShooter(rx, -40));
+                } else if (currentLevel === 3) {
+                    let r = randomNextInt(100);
+                    if (r < 25) enemies.push(new MeteorEnemy(rx, -40));
+                    else if (r < 45) enemies.push(new YamatoEnemy(rx, -50, false));
+                    else if (r < 65) enemies.push(new EliteShooter(rx, -40));
+                    else {
+                        let swarmCount = (menuSelection===0)?8 : (menuSelection===1)?12 : (menuSelection===2)?16 : 24;
+                        for(let i=0; i<swarmCount; i++) enemies.push(new SwarmMinion(rx+(i%4)*25-35, -40-Math.floor(i/4)*25));
+                    }
+                }
+            }
+        }
+    }
+    
+    bullets.forEach(b => b.update());
+    let hitBox = {x: playerX+16, y: playerY+16, w: 3, h: 3};
+    
+    // 道具逻辑
+    for(let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        item.update();
+        if (rectIntersect(item.getRect(), hitBox)) {
+            if (item.type === 0) playerBomb++;
+            else if (item.type === 1) {
+                if (playerHP < maxPlayerHP) playerHP++;
+                else score += 1000;
+            }
+            items.splice(i, 1);
+        }
+    }
+    
+    let triggerLevel2 = false, triggerLevel3 = false, triggerWin = false;
+    
+    // 敌人与子弹碰撞
+    for(let i = enemies.length - 1; i >= 0; i--) {
+        let en = enemies[i];
+        en.update();
+        if (en.checkHitPlayer(hitBox)) takeDamage();
+        
+        for(let j = bullets.length - 1; j >= 0; j--) {
+            let b = bullets[j];
+            if (!b.isEnemyBullet && rectIntersect(b.getRect(), en.getRect())) {
+                en.hp--;
+                bullets.splice(j, 1);
+                if (en.hp <= 0) {
+                    score += en.scoreValue;
+                    if (en instanceof BossEnemy && currentLevel === 1) {
+                        triggerLevel2 = true; items.push(new Item(en.x+80, en.y+50, 0));
+                    } else if (en instanceof BossSplitPart) {
+                        let splitsLeft = enemies.filter(e => e instanceof BossSplitPart).length;
+                        if (splitsLeft <= 1) { triggerLevel3 = true; items.push(new Item(en.x+30, en.y+30, 1)); }
+                    } else if (en instanceof StarshipBoss) {
+                        triggerWin = true;
+                    }
+                    enemies.splice(i, 1);
+                }
+                break;
+            }
+        }
+    }
+    
+    if (triggerLevel2) { currentLevel=2; bossSpawned=false; bullets=[]; enemies=[]; }
+    if (triggerLevel3) { currentLevel=3; bossSpawned=false; bullets=[]; enemies=[]; score=Math.max(score,5000); }
+    if (triggerWin) { gameState = 3; checkHighScore();}
+    
+    for(let b of bullets) {
+        if (b.isEnemyBullet && rectIntersect(b.getRect(), hitBox)) takeDamage();
+    }
+    
+    bullets = bullets.filter(b => !(b.y<-50 || b.y>850 || b.x<-50 || b.x>500));
+    items = items.filter(item => item.y <= 850);
+}
+
+function draw() {
+    // 刷新背景
+    ctx.fillStyle = "rgb(15, 15, 35)";
+    ctx.fillRect(0, 0, 480, 800);
+    
+    if (gameState === 0) {
+        ctx.fillStyle = "white"; ctx.font = "bold 36px SansSerif"; ctx.fillText("神必飞机大战", 100, 200);
+        ctx.font = "24px SansSerif";
+        for (let i = 0; i < 4; i++) {
+            ctx.fillStyle = (i === menuSelection) ? "yellow" : "white";
+            ctx.fillText((i === menuSelection ? "-> " : "   ") + diffNames[i], 120, 350 + i * 50);
+        }
+        ctx.fillStyle = "gray"; ctx.font = "16px sans-serif";
+        ctx.fillText("上下左右选择/移动，Z开火，XBomb，Shift切换低速", 50, 600);
+        
+        ctx.font = "14px Arial"; ctx.fillStyle = "rgb(150, 150, 150)";
+        ctx.fillText("v1.0 - HTML5 Edition", 10, 720);
+        ctx.fillText("Author: Bingtangsoft", 320, 720);
+        return;
+    }
+    
+    if (gameState === 2) {
+        ctx.fillStyle = "red"; ctx.font = "bold 40px sans-serif"; ctx.fillText("GAME OVER", 120, 350);
+        ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", 150, 420);
+        return;
+    }
+    if (gameState === 3) {
+        ctx.fillStyle = "green"; ctx.font = "bold 40px sans-serif"; ctx.fillText("MISSION CLEAR!", 80, 350);
+        ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", 150, 420);
+        return;
+    }
+
+    // --- 游戏中渲染 ---
+    if (bombActiveTimer > 0) {
+        ctx.fillStyle = "rgba(0, 255, 255, 0.47)";
+        let radius = (60 - bombActiveTimer) * 15;
+        ctx.beginPath(); ctx.arc(playerX+20, playerY+20, radius, 0, Math.PI*2); ctx.fill();
+    }
+    
+    // 玩家
+    if (invincibilityFrame % 4 < 2 || bombActiveTimer > 0) {
+        ctx.fillStyle = "orange";
+        if (timerCount % 4 < 2) { ctx.beginPath(); ctx.ellipse(playerX+20, playerY+47, 5, 9, 0, 0, Math.PI*2); ctx.fill(); }
+        
+        ctx.fillStyle = "red";
+        ctx.beginPath(); ctx.moveTo(playerX+20, playerY); ctx.lineTo(playerX, playerY+40); ctx.lineTo(playerX+40, playerY+40); ctx.closePath(); ctx.fill();
+        ctx.fillRect(playerX+18, playerY+12, 4, 10);
+        
+        ctx.beginPath(); ctx.arc(playerX+19, playerY+19, 3, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(playerX+19.5, playerY+19.5, 2.5, 0, Math.PI*2); ctx.fill();
+    }
+
+    // UI
+    ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.fillText("HP:", 10, 50);
+    ctx.fillStyle = "darkgray"; ctx.fillRect(40, 38, 150, 15);
+    ctx.fillStyle = "red"; ctx.fillRect(40, 38, 150 * (playerHP/maxPlayerHP), 15);
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(40, 38, 150, 15);
+    ctx.fillStyle = "white"; ctx.fillText(playerHP + "/" + maxPlayerHP, 195, 50);
+    
+    ctx.fillText("BOMB:", 10, 75);
+    ctx.fillStyle = "green";
+    for(let i=0; i<playerBomb; i++) {
+        ctx.beginPath(); ctx.arc(67 + i*20, 69, 7, 0, Math.PI*2); ctx.fill();
+    }
+    
+    for(let item of items) item.draw(ctx);
+    for(let b of bullets) b.draw(ctx);
+    for(let en of enemies) {
+        en.draw(ctx);
+        if (en instanceof BossEnemy) for(let og of en.guards) og.draw(ctx);
+    }
+    
+    ctx.fillStyle = "white"; ctx.font = "14px Arial";
+    ctx.fillText("Level: " + currentLevel + " Score: " + score, 10, 20);
+    ctx.fillText("Difficulty: " + diffNames[menuSelection].split('(')[0], 360, 20);
+    // ★新增：画出本地最高分
+    ctx.fillStyle = "gold";
+    ctx.fillText("High Score: " + Math.max(score, highScore), 10, 35);
+
+    // Boss 指示器
+    if (bossSpawned) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.78)"; ctx.fillRect(0, 710, 480, 40);
+        for(let e of enemies) {
+            if (e instanceof BossEnemy || e instanceof StarshipBoss || e instanceof BossSplitPart) {
+                let bx = Math.max(15, Math.min(465, e.x + e.w/2));
+                ctx.fillStyle = "white";
+                ctx.beginPath(); ctx.moveTo(bx, 715); ctx.lineTo(bx-12, 745); ctx.lineTo(bx+12, 745); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = "red";
+                ctx.beginPath(); ctx.moveTo(bx, 722); ctx.lineTo(bx-6, 742); ctx.lineTo(bx+6, 742); ctx.closePath(); ctx.fill();
+            }
+        }
+    }
+
+    if (isPaused) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.58)"; ctx.fillRect(0, 0, 480, 800);
+        ctx.fillStyle = "white"; ctx.font = "bold 40px sans-serif"; ctx.fillText("PAUSED", 150, 400);
+        ctx.font = "20px sans-serif"; ctx.fillText("按 P 键继续", 185, 450);
+    }
+}
+
+// --- 核心游戏循环 (Fixed Timestep @ 40 FPS) ---
+const FPS = 40;
+const frameInterval = 1000 / FPS; // 25ms 完美复刻 Timer(25)
+let lastTime = performance.now();
+let accumulator = 0;
+
+function gameLoop(currentTime) {
+    requestAnimationFrame(gameLoop);
+    
+    let deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
+    
+    // 避免因为页面切走导致 deltaTime 过大产生“死亡螺旋”跳帧
+    if (deltaTime > 250) deltaTime = 250;
+    
+    accumulator += deltaTime;
+    
+    // 保证逻辑帧的绝对稳定，不随显示器刷新率变化
+    while (accumulator >= frameInterval) {
+        update();
+        accumulator -= frameInterval;
+    }
+    
+    draw();
+}
+
+// 启动循环
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
