@@ -75,6 +75,7 @@ let reward20k = false;
 let playerHP = 3, maxPlayerHP = 3;
 let invincibilityFrame = 0;
 let playerBomb = 2, bombActiveTimer = 0;
+let deathBombTimer = 0; // ★★★ 新增：决死计时器 (8帧 = 0.2秒)
 
 let bullets = [];
 let enemies = [];
@@ -245,6 +246,8 @@ function handleXPress() {
         if (playerBomb > 0 && bombActiveTimer <= 0) {
             playerBomb--;
             bombActiveTimer = 60;
+            deathBombTimer = 0; // ★★★ 决死成功！清除决死状态，免除掉血
+            invincibilityFrame = 60; // 额外给一点无敌帧
         }
     }
 }
@@ -368,17 +371,41 @@ class Bullet {
     }
     getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
     draw(ctx) {
-        if (this.type === 0) {
-            let cx = this.x + this.w / 2;
+    if (this.type === 0) {
+   let cx = this.x + this.w / 2;
             let cy = this.y + this.h / 2;
-            ctx.fillStyle = "rgba(255, 255, 0, 0.4)";
-            ctx.beginPath();
-            ctx.ellipse(cx, cy, this.w / 2 + 2, this.h / 2 + 6, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "white";
-            ctx.beginPath();
-            ctx.ellipse(cx, cy, this.w / 2 - 1, this.h / 2 + 2, 0, 0, Math.PI * 2);
-            ctx.fill();
+            
+            if (this.behavior) {
+                // --- NEW: 辅机直射圆弹（小圆弹） ---
+                // 使用辅机弹独特的青色，采用和主炮一样的“光晕+核心”结构
+                
+                // 1. 外层青色光晕
+                ctx.fillStyle = "rgba(0, 255, 204, 0.4)"; 
+                ctx.beginPath();
+                // 追踪直射弹初始w为8，r为4。这里画个r为6的光晕。
+                ctx.arc(cx, cy, this.w / 2 + 2, 0, Math.PI * 2); 
+                ctx.fill();
+                
+                // 2. 内层白色核心
+                ctx.fillStyle = "white";
+                ctx.beginPath();
+                // r为3的核心。
+                ctx.arc(cx, cy, this.w / 2 - 1, 0, Math.PI * 2); 
+                ctx.fill();
+
+            } else {
+                // ... (保留原有的黄色椭圆子弹绘制逻辑) ...
+                let cx = this.x + this.w / 2;
+                let cy = this.y + this.h / 2;
+                ctx.fillStyle = "rgba(255, 255, 0, 0.4)";
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, this.w / 2 + 2, this.h / 2 + 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "white";
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, this.w / 2 - 1, this.h / 2 + 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
         } else if (this.type === 1) {
             let radius = this.w / 2.0;
             let grad = ctx.createRadialGradient(this.x + radius, this.y + radius, 0, this.x + radius, this.y + radius, radius);
@@ -424,7 +451,7 @@ class Enemy {
 
 // 第四关：发射扇形随机弹+自机狙
 class FanAimEnemy extends Enemy {
-    constructor(x, y) { super(x, y, 40, 40, 8, 500); this.timer = 0; }
+    constructor(x, y) { super(x, y, 40, 40, 16, 500); this.timer = 0; }
     draw(ctx) {
         ctx.fillStyle = "#4B0082"; 
         ctx.beginPath();
@@ -458,7 +485,7 @@ class FanAimEnemy extends Enemy {
 }
 // 第四关：360度正余弦交替子弹
 class SineCosineEnemy extends Enemy {
-    constructor(x, y) { super(x, y, 40, 40, 8, 500); this.timer = 0; }
+    constructor(x, y) { super(x, y, 40, 40, 16, 500); this.timer = 0; }
     draw(ctx) {
         ctx.fillStyle = "#2F4F4F";
         ctx.beginPath(); ctx.arc(this.x + 20, this.y + 20, 20, 0, Math.PI*2); ctx.fill();
@@ -509,7 +536,7 @@ class NormalEnemy extends Enemy {
 }
 
 class ShooterEnemy extends Enemy {
-    constructor(x, y) { super(x, y, 40, 40, 3, 50); this.timer = 0; }
+    constructor(x, y) { super(x, y, 40, 40, 5, 50); this.timer = 0; }
     draw(ctx) {
         ctx.fillStyle = "#555";
         ctx.beginPath();
@@ -529,7 +556,7 @@ class ShooterEnemy extends Enemy {
 }
 
 class EliteShooter extends Enemy {
-    constructor(x, y) { super(x, y, 45, 40, 3, 80); this.timer = 0; }
+    constructor(x, y) { super(x, y, 45, 40, 5, 80); this.timer = 0; }
     draw(ctx) {
         ctx.fillStyle = "#900000";
         ctx.beginPath();
@@ -558,7 +585,7 @@ class EliteShooter extends Enemy {
 }
 
 class MeteorEnemy extends Enemy {
-    constructor(x, y) { super(x, y, 40, 40, 5, 25); }
+    constructor(x, y) { super(x, y, 40, 40, 7, 25); }
     draw(ctx) {
         ctx.fillStyle = "#696969";
         ctx.beginPath();
@@ -592,7 +619,7 @@ class SwarmMinion extends Enemy {
 
 class YamatoEnemy extends Enemy {
     constructor(x, y, isSummon) {
-        super(x, y, 50, 50, isSummon ? 50 : 5, isSummon ? 0 : 100);
+        super(x, y, 50, 50, isSummon ? 20 : 7, isSummon ? 0 : 100);
         this.isSummon = isSummon; this.timer = 0; this.laserActive = 0;
     }
     draw(ctx) {
@@ -655,7 +682,7 @@ class OrbitGuard extends Enemy {
 
 class BossSplitPart extends Enemy {
     constructor(x, y, dir) {
-        super(x, y, 50, 50, 50, 400); this.initialDir = dir; this.timer = 0; this.spiralAngle = 0;
+        super(x, y, 50, 50, 75, 400); this.initialDir = dir; this.timer = 0; this.spiralAngle = 0;
         this.anchorX = (dir < 0) ? 80 : 320; this.anchorY = 120;
     }
     draw(ctx) {
@@ -712,7 +739,7 @@ class BossSplitPart extends Enemy {
 
 class BossEnemy extends Enemy {
     constructor(x, y, level) {
-        super(x, y, 160, 100, (level===1?120:150), 1000);
+        super(x, y, 160, 100, (level===1?320:380), 1000);
         this.level = level; this.targetX = 160; this.timer = 0; this.phase = 1;
         this.laserWarmup = 0; this.laserActive = 0; this.spiralAngle = 0;
         this.guards = []; this.isSplitTriggered = false;
@@ -847,7 +874,7 @@ class BossEnemy extends Enemy {
 
 class StarshipBoss extends Enemy {
     constructor(x, y) {
-        super(x, y, 260, 120, 330, 10000);
+        super(x, y, 260, 120, 450, 10000);
         this.timer = 0; this.phase = 1; this.phase3Summoned = false;
         this.laserStep = 0; this.phase1Timer = 0; this.laserWarmup = 0; this.laserActive = 0;
         this.spiralAngle = 0;
@@ -1044,7 +1071,7 @@ class StarshipBoss extends Enemy {
 // ==============================================================================
 class Level4Boss extends Enemy {
     constructor(x, y) {
-        super(x, y, 220, 160, 840, 25000); 
+        super(x, y, 220, 160, 1140, 25000); 
         this.timer = 0; 
         this.phase = 1; 
         
@@ -1336,13 +1363,10 @@ function startGame() {
 }
 
 function takeDamage() {
-    if (invincibilityFrame <= 0 && bombActiveTimer <= 0) {
-        playerHP--;
-        if(playerHP==1){playerBomb++;}
-        invincibilityFrame = 60;
-        if (playerHP <= 0) gameState = 2;
-        checkHighScore(); 
+    if (invincibilityFrame <= 0 && bombActiveTimer <= 0 && deathBombTimer <= 0) {
+        deathBombTimer = 16; // 40FPS 下 8 帧刚好是 0.2 秒
     }
+   
 }
 
 function checkHighScore() {
@@ -1356,14 +1380,25 @@ function update() {
     if (gameState !== 1 || isPaused) return;
     
     timerCount++;
+    levelTimer++;
+
+    // ★★★ 新增：决死倒计时结算
+    if (deathBombTimer > 0) {
+        deathBombTimer--;
+        if (deathBombTimer === 0) {
+            // 0.2秒内没有按出 Bomb，决死失败，真正扣血！
+            playerHP--;
+            if(playerHP == 1){playerBomb++;}
+            invincibilityFrame = 60;
+            if (playerHP <= 0) gameState = 2;
+            checkHighScore(); 
+        }
+    }
     if (invincibilityFrame > 0) invincibilityFrame--;
     
     if (bombActiveTimer > 0) {
         bombActiveTimer--;
         bullets = bullets.filter(b => !b.isEnemyBullet);
-        if (timerCount % 5 === 0) {
-            for(let en of enemies) en.hp -= 1;
-        }
     }
     
     let speed = keys.Shift ? 3 : 7;
@@ -1373,13 +1408,57 @@ function update() {
     if (keys.ArrowDown && playerY < 760) playerY += speed;
     
     // ----------------- 新增：第四关起双排火力 -----------------
-    if (keys.z && timerCount % 5 === 0) {
+    if (keys.z && timerCount % 6 === 0) {
         if (currentLevel >= 4) {
             // 第四关火力升级：双发激光，宽度调整贴合机体两侧
             bullets.push(new Bullet(playerX + 5, playerY, 8, 12, 0, -12, 'yellow', false));
             bullets.push(new Bullet(playerX + 25, playerY, 8, 12, 0, -12, 'yellow', false));
         } else {
             bullets.push(new Bullet(playerX + 15, playerY, 8, 12, 0, -12, 'yellow', false));
+        }
+    }
+if (keys.z && timerCount % 18 === 0) {
+        let homingCount = (currentLevel >= 4) ? 4 : 2;
+        let spacing = (homingCount === 4) ? 30 : 50; 
+        
+        for (let i = 0; i < homingCount; i++) {
+            let offsetX = (i - (homingCount - 1) / 2) * spacing; 
+            let spawnX = playerX + 15 + offsetX;
+            let spawnY = playerY + 25; 
+            
+            // 1. 在发射的瞬间寻找屏幕内最近的敌人（只扫描一次）
+            let target = null;
+            let minDist = Infinity;
+            for (let e of enemies) {
+                if (e.y < -50 || e.hp <= 0 || e instanceof OrbitGuard) continue; 
+                let dx = (e.x + e.w/2) - spawnX;
+                let dy = (e.y + e.h/2) - spawnY;
+                let dist = dx*dx + dy*dy;
+                if (dist < minDist) { minDist = dist; target = e; }
+            }
+            
+            // 2. 根据目标计算固定的飞行向量
+            let speed = 22;
+            let vx = 0;
+            let vy = -speed; // 如果屏幕里没敌人，默认垂直向上打
+            
+            if (target) {
+                let angle = Math.atan2((target.y + target.h/2) - spawnY, (target.x + target.w/2) - spawnX);
+                vx = Math.cos(angle) * speed;
+                vy = Math.sin(angle) * speed;
+            }
+            
+            // 3. 生成子弹，直接赋予计算好的 vx 和 vy
+            let b = new Bullet(spawnX, spawnY, 8, 16, vx, vy, '#00FFCC', false);
+            
+            // 保留一个最简单的 behavior 仅仅是为了让 draw 函数把它画成青色尖刺形状
+            // 它的轨迹现在是绝对笔直的！
+            b.behavior = function(bul) {
+                bul.x += bul.dx; 
+                bul.y += bul.dy;
+            };
+            
+            bullets.push(b);
         }
     }
     
@@ -1449,42 +1528,53 @@ for(let i = items.length - 1; i >= 0; i--) {
         let en = enemies[i];
         en.update();
         if (en.checkHitPlayer(hitBox)) takeDamage();
+
+        // ★★★ 修复：Bomb 伤害统一在这里结算
+        if (bombActiveTimer > 0 && timerCount % 5 === 0) {
+            en.hp -= 1; // 每5帧造成1伤害，一发Bomb总伤约12
+        }
+
+        let isDead = (en.hp <= 0); // 判断是否被 Bomb 直接炸死
         
-        for(let j = bullets.length - 1; j >= 0; j--) {
+for(let j = bullets.length - 1; j >= 0; j--) {
             let b = bullets[j];
             if (!b.isEnemyBullet && rectIntersect(b.getRect(), en.getRect())) {
                 en.hp--;
                 bullets.splice(j, 1);
                 if (en.hp <= 0) {
-                    score += en.scoreValue;
-                    // ★★★ 新增：非 Boss 怪物死亡时掉落分数道具并加速时间轴
-                    let isBoss = (en instanceof BossEnemy || en instanceof StarshipBoss || en instanceof BossSplitPart || en instanceof Level4Boss);
-                    if (!isBoss) {
-                        items.push(new Item(en.x + en.w/2, en.y + en.h/2, 2)); 
-                        if (!bossSpawned) {
-                            // 换算成帧数：0.5s=20帧, 1s=40帧, 1.2s=48帧, 2s=80帧
-                            if (currentLevel === 1) levelTimer += 20; 
-                            else if (currentLevel === 2) levelTimer += 40; 
-                            else if (currentLevel === 3) levelTimer += 48; 
-                            else if (currentLevel === 4) levelTimer += 80; 
-                        }
-                    }
-                    if (en instanceof BossEnemy && currentLevel === 1) {
-                        triggerLevel2 = true; items.push(new Item(en.x+80, en.y+50, 0));
-                    } else if (en instanceof BossSplitPart) {
-                        let splitsLeft = enemies.filter(e => e instanceof BossSplitPart).length;
-                        if (splitsLeft <= 1) { triggerLevel3 = true; items.push(new Item(en.x+30, en.y+30, 1)); }
-                    } else if (en instanceof StarshipBoss) {
-                        triggerLevel4 = true; // 星舰打完进第四关
-                    } else if (en instanceof Level4Boss) {
-                        triggerWin = true; // 终极 Boss 打完才是通关
-                    }
-                    enemies.splice(i, 1);
+                    isDead = true; // 判断是否被子弹打死
                 }
-                break;
+                break; // 子弹命中后直接跳出这颗子弹的判定
             }
         }
-    }
+        
+        // ★★★ 修复：不管是子弹打死还是Bomb炸死，统一处理掉落和推进关卡
+        if (isDead) {
+            score += en.scoreValue;
+            let isBoss = (en instanceof BossEnemy || en instanceof StarshipBoss || en instanceof BossSplitPart || en instanceof Level4Boss);
+            if (!isBoss) {
+                items.push(new Item(en.x + en.w/2, en.y + en.h/2, 2)); 
+                if (!bossSpawned) {
+                    if (currentLevel === 1) levelTimer += 20; 
+                    else if (currentLevel === 2) levelTimer += 40; 
+                    else if (currentLevel === 3) levelTimer += 48; 
+                    else if (currentLevel === 4) levelTimer += 80; 
+                }
+            }
+            if (en instanceof BossEnemy && currentLevel === 1) {
+                triggerLevel2 = true; items.push(new Item(en.x+80, en.y+50, 0));
+            } else if (en instanceof BossSplitPart) {
+                let splitsLeft = enemies.filter(e => e instanceof BossSplitPart).length;
+                if (splitsLeft <= 1) { triggerLevel3 = true; items.push(new Item(en.x+30, en.y+30, 1)); }
+            } else if (en instanceof StarshipBoss) {
+                triggerLevel4 = true; 
+            } else if (en instanceof Level4Boss) {
+                triggerWin = true; 
+            }
+            enemies.splice(i, 1);
+                }
+            }
+    
     
     if (triggerLevel2) { 
         triggerScene('end_level_1', 1); 
@@ -1553,7 +1643,7 @@ function draw() {
         ctx.fillText("上下左右选择/移动，Z开火，XBomb，Shift切换低速", 50, 600);
         
         ctx.font = "14px Arial"; ctx.fillStyle = "rgb(150, 150, 150)";
-        ctx.fillText("v1.0.2 - HTML5 Edition", 10, 740);
+        ctx.fillText("v1.0.3 - HTML5 Edition", 10, 740);
         ctx.fillText("Author: Bingtangsoft", 320, 740);
         return;
     }
@@ -1614,6 +1704,14 @@ function draw() {
     }
     
     if (invincibilityFrame % 4 < 2 || bombActiveTimer > 0) {
+        if (deathBombTimer > 0) {
+        // ★★★ 新增：决死特效，极高频的红白闪烁警报
+        let cx = playerX + 17.5; let cy = playerY + 17.5;
+        let dw = 80; let dh = 80;
+        ctx.fillStyle = (timerCount % 2 === 0) ? "rgba(255,0,0,0.8)" : "rgba(255,255,255,0.8)";
+        ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI*2); ctx.fill();
+        ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
+    }
         let cx = playerX + 17.5; let cy = playerY + 17.5;
         let dw = 80; let dh = 80; 
         ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
