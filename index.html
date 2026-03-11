@@ -35,33 +35,26 @@
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-// --- ★新增：加载图片资源 ---
 const imgTang = new Image();
-imgTang.src = 'avatar_tang.png'; // 这里填你保存的图片文件名（注意路径）
+imgTang.src = 'avatar_tang.png'; 
 const bgStart1 = new Image(); 
 bgStart1.src = 'bg_start1.png';
 const bgEnd1 = new Image(); 
-bgEnd1.src = 'bg_end1.png'
+bgEnd1.src = 'bg_end1.png';
 const boss1Img = new Image();
 boss1Img.src = 'boss1.png';
-
-// --- ★新增：加载第二关 Boss & 附属物素材 ---
 const boss2BodyImg = new Image();
 boss2BodyImg.src = 'boss2_body.png'; 
-
-const boss2GuardImg = new Image(); // 正常状态
+const boss2GuardImg = new Image(); 
 boss2GuardImg.src = 'boss2_guard_normal.png';
-
-const boss2GuardAttackImg = new Image(); // 攻击状态
+const boss2GuardAttackImg = new Image(); 
 boss2GuardAttackImg.src = 'boss2_guard_attack.png';
-
-
 const playerImg = new Image();
-playerImg.src = 'player_ship.png'; // 确保文件名和路径正确
-
-// --- ★新增：加载第三关 Boss 素材 ---
+playerImg.src = 'player_ship.png'; 
 const boss3Img = new Image();
-boss3Img.src = 'boss3_starship.png'; // 请确保文件名与你保存的贴图一致
+boss3Img.src = 'boss3_starship.png'; 
+const boss4Img = new Image();
+boss4Img.src = 'boss4_coil.png'; // 假设您的贴图文件名为 boss4_coil.png
 
 // --- 游戏全局状态 ---
 let gameState = 0; // 0=菜单，1=游戏中，2=死亡，3=胜利，4=剧情
@@ -73,6 +66,12 @@ let diffMult = 1.0;
 let currentDiffMult = 1.0;
 
 let playerX = 220, playerY = 600, score = 0, currentLevel = 1, timerCount = 0;
+
+// --- 新增：关卡专属计时器和分数奖励标记 ---
+let levelTimer = 0; 
+let reward8k = false;
+let reward20k = false;
+
 let playerHP = 3, maxPlayerHP = 3;
 let invincibilityFrame = 0;
 let playerBomb = 2, bombActiveTimer = 0;
@@ -83,22 +82,17 @@ let items = [];
 
 let bossSpawned = false;
 
-// --- ★新增：剧情/CG 系统数据 ---
-let currentSceneRects = []; // 当前场景的图片块数据（示意图用，实装后替换为 Image 对象）
-let currentDialogueLines = []; // 当前场景的对话文本数组
-let currentDialogueIndex = 0; // 当前播放到第几条对话
-let postSceneState = 1; // 剧情结束后跳转到哪个状态 (默认跳回游戏中)
+// --- 剧情/CG 系统数据 ---
+let currentSceneRects = [];
+let currentDialogueLines = [];
+let currentDialogueIndex = 0;
+let postSceneState = 1;
 
-// 定义具体剧情内容
-// 格式：{ CG: [示意图矩形块], text: ["对话1", "对话2", ...] }
 const storyData = {
-    // 第一关开始前
     start_level_1: {
         CG: [
-           // ★修改：把背景色块换成了背景图
             {img: bgStart1, w: 480, h: 400, x: 0, y: 0},
-            {img: imgTang, w: 150, h: 150, y: 250, x: 20}, // 这里调整了宽高和Y坐标，让头像适应对话框上方
-            
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
             "【警报】：未知舰队已突破外围防线。",
@@ -107,11 +101,10 @@ const storyData = {
             "？？：不能让它们靠近核心半步。出发！"
         ]
     },
-    // 击败第一关Boss后
     end_level_1: {
         CG: [
             {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
-            {img: imgTang, w: 150, h: 150, y: 250, x: 20}, // 这里调整了宽高和Y坐标，让头像适应对话框上方
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
             "？？：干得好。这波攻势虽然被挡下来了...",
@@ -121,54 +114,103 @@ const storyData = {
             "？？：月球基地不能失守。请万分小心！"
         ]
     },
-    // 你可以在这里继续添加：start_level_2, start_boss_yamato (关中剧情), mission_complete 等场景
-    // 击败第二关 Boss 后（触发第三关）
     end_level_2: {
         CG: [
             {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
-            {img: imgTang, w: 150, h: 150, y: 250, x: 20}, // 这里调整了宽高和Y坐标，让头像适应对话框上方
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
+            "棠：什么双子座，不如叫双头龙....",
             "？？：棠！收到请回答！",
             "棠：收到总部，障碍已清除",
             "？？：侦测到小型机群正在靠近，敌方动用了恒星级激光炮",
+            "棠：啥？",
             "？？：正在解除你的系统限制，小心，前面好像有个大家伙要来了",
             "棠：那是什么东西，航母吗？" ,
             "(干扰电流的声音)" ,
+            "棠：喂喂喂？能听到吗" ,
         ]
     },
-    // 击败第三关 Boss（通关剧情）
     end_level_3: {
         CG: [
             {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
-            {img: imgTang, w: 150, h: 150, y: 250, x: 20}, // 这里调整了宽高和Y坐标，让头像适应对话框上方
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
-            "【系统】：目标威胁等级下降中。",
-            "棠：呼... 终于结束了吗。",
-            "？？：我们守住了。",
-            "【结局】：试玩版已结束，作者qq：492064072"
+            "？？：哔哔——",
+            "【系统】：警告！检测到月球核心区域出现异常高能反应！",
+            "棠：总部，能听到吗，我这里收到了新的警告",
+            "？？：棠，务必小心，敌方的主力已经抵达了，还记得上次交过火的那个紫色大蛇吗",
+            "棠：盘蛇？那玩意不是早就被我拆了吗",
+            "？？：就叫它盘蛇02吧，哈哈",
+            "？？：武器系统限制已经解除了，好好适应一下升级过的火力吧",
+            "棠：了解，把那家伙轰成渣！"
+        ]
+    },
+    end_level_4_easy: {
+        CG: [
+            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
+        ],
+        text: [
+            "【系统】：目标沉默。核心能源稳定。",
+            "棠：呼... 这种程度，闭着眼睛也能搞定呢。",
+            "？？：干得漂亮，棠。",
+            "【初出茅庐(Easy)】：感谢游玩！你已经展现出了飞行员的天赋，去挑战 Normal 难度体验真正的战斗吧！"
+        ]
+    },
+    end_level_4_normal: {
+        CG: [
+            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
+        ],
+        text: [
+            "【系统】：目标沉默。核心已稳定。",
+            "棠：总算是解决了... 稍微让我认真了一点点。",
+            "？？：辛苦了！棠。",
+            "【王牌飞行员(Normal)】：感谢游玩！你已经通关了游戏的核心难度！"
+        ]
+    },
+    end_level_4_hard: {
+        CG: [
+            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
+        ],
+        text: [
+            "【系统】：强能反应消失... 警报解除。",
+            "棠：哈啊... 哈啊... 真是一场激战。差点以为要交代在这里了。",
+            "？？：难以置信，棠！你居然真的击退了那种怪物！",
+            "【传说的驾驶员(Hard)】：进阶的强者！已经接近神明了",
+            "关于游戏的修改意见欢迎联系qq：492064072"
+        ]
+    },
+    end_level_4_lunatic: {
+        CG: [
+            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: imgTang, w: 150, h: 150, y: 250, x: 20},
+        ],
+        text: [
+            "【系统】：..................",
+            "棠：结束了... 这才是幕后黑手的真正力量吗...",
+            "？？：棠！收到请回答！机体受损率已经达到99%了！",
+            "棠：我没事。让我好好歇歇吧",
+            "【就算是魔神也杀给你看！(Lunatic)】：登峰造极！您已超越了神的领域！感谢您的游玩！",
+            "关于游戏的修改意见欢迎联系qq：492064072"
         ]
     }
 };
 
-// ★ 新增这行代码：从本地读取最高分，如果没有则默认是 0
 let highScore = localStorage.getItem('planeGameHighScore') || 0;
 
-// 按键状态
 const keys = {
     ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
     z: false, x: false, p: false, Shift: false
 };
 
-// 监听按键
-// 监听按键
 window.addEventListener('keydown', (e) => {
-    // ★新增：如果是方向键，阻止浏览器默认的滚动条滚动行为
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
     }
-
     let k = e.key;
     if (k === 'ArrowLeft') keys.ArrowLeft = true;
     if (k === 'ArrowRight') keys.ArrowRight = true;
@@ -194,14 +236,8 @@ window.addEventListener('keyup', (e) => {
 
 function handleZPress() {
     if (gameState === 0) {startGame(); triggerScene('start_level_1', 1);}
-
-    // 2. ★新增：如果是剧情模式，按 Z 推进对话
-    else if (gameState === 4) {
-        advanceDialogue();
-    }
-    else if (gameState === 2 || gameState === 3) {
-        gameState = 0;
-    }
+    else if (gameState === 4) { advanceDialogue(); }
+    else if (gameState === 2 || gameState === 3) { gameState = 0; }
 }
 
 function handleXPress() {
@@ -217,7 +253,6 @@ function handlePPress() {
     if (gameState === 1) isPaused = !isPaused;
 }
 
-// 菜单选择处理
 window.addEventListener('keydown', (e) => {
     if (gameState === 0) {
         if (e.key === 'ArrowUp') menuSelection = (menuSelection > 0) ? menuSelection - 1 : 3;
@@ -225,18 +260,13 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// --- 工具函数 ---
 function rectIntersect(r1, r2) {
-    return !(r2.x > r1.x + r1.w || 
-             r2.x + r2.w < r1.x || 
-             r2.y > r1.y + r1.h ||
-             r2.y + r2.h < r1.y);
+    return !(r2.x > r1.x + r1.w || r2.x + r2.w < r1.x || r2.y > r1.y + r1.h || r2.y + r2.h < r1.y);
 }
-// --- ★新增：Canvas 文本自动换行辅助函数 ---
-function wrapText(context, text, x, y, maxWidth, lineHeight) {
-    const words = text.split(''); // 按字符拆分（适合中英文混合）
-    let line = '';
 
+function wrapText(context, text, x, y, maxWidth, lineHeight) {
+    const words = text.split(''); 
+    let line = '';
     for (let n = 0; n < words.length; n++) {
         const testLine = line + words[n];
         const metrics = context.measureText(testLine);
@@ -251,39 +281,25 @@ function wrapText(context, text, x, y, maxWidth, lineHeight) {
     }
     context.fillText(line, x, y);
 }
-// --- ★新增：剧情控制函数 ---
 
-/**
- * 触发一个剧情场景
- * @param sceneKey storyData 中的键名
- * @param nextState 剧情结束后要跳转到的 gameState
- */
 function triggerScene(sceneKey, nextState) {
     const scene = storyData[sceneKey];
-    if (!scene) {
-        // 如果没有定义剧情，直接跳转到下一个状态
-        gameState = nextState;
-        return;
-    }
-
-    gameState = 4; // 进入剧情模式
-    currentSceneRects = scene.CG; // 加载 CG 数据
-    currentDialogueLines = scene.text; // 加载对话
-    currentDialogueIndex = 0; // 重置对话索引
-    postSceneState = nextState; // 记录结束后跳转的状态
+    if (!scene) { gameState = nextState; return; }
+    gameState = 4; 
+    currentSceneRects = scene.CG; 
+    currentDialogueLines = scene.text; 
+    currentDialogueIndex = 0; 
+    postSceneState = nextState; 
 }
 
-// 推进对话
 function advanceDialogue() {
     currentDialogueIndex++;
-    // 如果对话播完了
     if (currentDialogueIndex >= currentDialogueLines.length) {
         gameState = postSceneState;
     }
 }
 
 function darkenColor(cStr) {
-    // 简易颜色加深映射，针对本游戏中用到的颜色
     const map = {
         'magenta': '#8b008b', 'cyan': '#008b8b', 'orange': '#cc5500', 
         'pink': '#ff69b4', 'yellow': '#b8860b', 'red': '#8b0000',
@@ -311,21 +327,30 @@ class Item {
             ctx.fillRect(this.x, this.y, 20, 20);
             ctx.fillStyle = "white";
             ctx.fillText("B", this.x + 5, this.y + 16);
-        } else {
+        } else if (this.type === 1) {
             ctx.fillStyle = "pink";
             ctx.beginPath(); ctx.arc(this.x + 10, this.y + 10, 10, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = "white";
             ctx.fillText("H", this.x + 5, this.y + 16);
+        } else if (this.type === 2) {
+            // 新增：类似经典弹幕游戏里的蓝色“点道具”
+            ctx.fillStyle = "#87CEFA"; 
+            ctx.fillRect(this.x + 4, this.y + 4, 12, 12);
+            ctx.strokeStyle = "white";
+            ctx.strokeRect(this.x + 4, this.y + 4, 12, 12);
         }
     }
     getRect() { return {x: this.x, y: this.y, w: 20, h: 20}; }
 }
 
 class Bullet {
-    constructor(x, y, w, h, dx, dy, color, isEnemy) {
+    // 新增 behavior 参数，用于实现第四关蛇形、冰冻等复杂弹道
+    constructor(x, y, w, h, dx, dy, color, isEnemy, behavior = null) {
         this.x = x; this.y = y; this.w = w; this.h = h;
         this.dx = dx; this.dy = dy; this.color = color;
         this.isEnemyBullet = isEnemy;
+        this.behavior = behavior;
+        this.timer = 0;
         if (!isEnemy) this.type = 0;
         else {
             let c = color.toLowerCase();
@@ -333,22 +358,23 @@ class Bullet {
             else this.type = 2;
         }
     }
-    update() { this.x += this.dx; this.y += this.dy; }
+    update() { 
+        this.timer++;
+        if (this.behavior) {
+            this.behavior(this);
+        } else {
+            this.x += this.dx; this.y += this.dy; 
+        }
+    }
     getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
     draw(ctx) {
         if (this.type === 0) {
-            // --- ★精细化自机子弹 ---
             let cx = this.x + this.w / 2;
             let cy = this.y + this.h / 2;
-            
-            // 外层发光晕 (半透明黄色)
             ctx.fillStyle = "rgba(255, 255, 0, 0.4)";
             ctx.beginPath();
-            // 画一个稍大的椭圆作为光晕
             ctx.ellipse(cx, cy, this.w / 2 + 2, this.h / 2 + 6, 0, 0, Math.PI * 2);
             ctx.fill();
-            
-            // 内层高能核心 (纯白锐利)
             ctx.fillStyle = "white";
             ctx.beginPath();
             ctx.ellipse(cx, cy, this.w / 2 - 1, this.h / 2 + 2, 0, 0, Math.PI * 2);
@@ -394,26 +420,88 @@ class Enemy {
     }
 }
 
-// 具体敌人实现...
+// ----------------- 新增第四关小怪 -----------------
+
+// 第四关：发射扇形随机弹+自机狙
+class FanAimEnemy extends Enemy {
+    constructor(x, y) { super(x, y, 40, 40, 8, 500); this.timer = 0; }
+    draw(ctx) {
+        ctx.fillStyle = "#4B0082"; 
+        ctx.beginPath();
+        ctx.moveTo(this.x + 20, this.y + 40);
+        ctx.lineTo(this.x, this.y);
+        ctx.lineTo(this.x + 40, this.y);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#FF1493"; 
+        ctx.beginPath(); ctx.arc(this.x + 20, this.y + 15, 6, 0, Math.PI*2); ctx.fill();
+    }
+    update() {
+        this.y += 1.2 * diffMult; this.timer++;
+        let rate = Math.max(30, Math.floor(70 / diffMult));
+        if (this.timer % rate === 0) {
+            let cx = this.x + 20, cy = this.y + 20;
+            let aimAng = Math.atan2((playerY+20)-cy, (playerX+20)-cx);
+            
+            // ★修改：自机狙速度随难度上升 (Easy约为3.0，Lunatic约为4.2)
+            let aimSpd = 2.0 + diffMult*2; 
+            bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(aimAng)*aimSpd, Math.sin(aimAng)*aimSpd, 'red', true));
+            
+            let count = (menuSelection === 0) ? 2 : 4 + menuSelection*2;
+            // ★修改：扇形散弹速度也随难度上升 (比自机狙稍微慢一点，形成层次)
+            let fanSpd = 1.0 + diffMult; 
+            for(let i=0; i<count; i++) {
+                let rAng = aimAng + (Math.random()*1.5 - 0.75);
+                bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*fanSpd, Math.sin(rAng)*fanSpd, 'pink', true));
+            }
+        }
+    }
+}
+// 第四关：360度正余弦交替子弹
+class SineCosineEnemy extends Enemy {
+    constructor(x, y) { super(x, y, 40, 40, 8, 500); this.timer = 0; }
+    draw(ctx) {
+        ctx.fillStyle = "#2F4F4F";
+        ctx.beginPath(); ctx.arc(this.x + 20, this.y + 20, 20, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "#00FFFF"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(this.x + 20, this.y + 20, 12 + Math.sin(this.timer*0.2)*4, 0, Math.PI*2); ctx.stroke();
+    }
+    update() {
+        this.y += 0.8 * diffMult; this.timer++;
+        let rate = Math.max(40, Math.floor(90 / diffMult));
+        if (this.timer % rate === 0) {
+            let cx = this.x + 20, cy = this.y + 20;
+            let ways = 4 + menuSelection * 3;
+            let phaseOffset = this.timer * 0.05;
+            
+            // ★修改：基础速度和波动幅度根据难度放大
+            let baseSpd = 1 + diffMult * 1; // 基础初速
+            let waveAmp = 0.2 + diffMult * 0.3; // 波动振幅
+            
+            for(let i=0; i<ways; i++) {
+                let baseAng = i * (Math.PI*2 / ways) + phaseOffset;
+                let isSine = (i % 2 === 0); 
+                
+                // ★应用动态计算的弹速
+                let spd = baseSpd + (isSine ? Math.sin(phaseOffset) : Math.cos(phaseOffset)) * waveAmp;
+                let color = isSine ? 'cyan' : 'magenta';
+                
+                bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(baseAng)*Math.abs(spd), Math.sin(baseAng)*Math.abs(spd), color, true));
+            }
+        }
+    }
+}
+// ----------------- 原有小怪及Boss保留 -----------------
+
 class NormalEnemy extends Enemy {
     constructor(x, y) { super(x, y, 35, 30, 1, 10); }
     draw(ctx) {
-        // ★ 前掠翼侦察无人机
         let grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y + 30);
         grad.addColorStop(0, "#999"); grad.addColorStop(1, "#444");
-        
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.moveTo(this.x + 17.5, this.y + 30); // 往下的机头
-        ctx.lineTo(this.x, this.y + 10);        // 左翼尖
-        ctx.lineTo(this.x + 10, this.y);        // 左翼根
-        ctx.lineTo(this.x + 17.5, this.y + 5);  // 尾部中心点
-        ctx.lineTo(this.x + 25, this.y);        // 右翼根
-        ctx.lineTo(this.x + 35, this.y + 10);   // 右翼尖
-        ctx.closePath();
-        ctx.fill();
-
-        // 蓝色的能量核心
+        ctx.moveTo(this.x + 17.5, this.y + 30); ctx.lineTo(this.x, this.y + 10); ctx.lineTo(this.x + 10, this.y);
+        ctx.lineTo(this.x + 17.5, this.y + 5); ctx.lineTo(this.x + 25, this.y); ctx.lineTo(this.x + 35, this.y + 10);
+        ctx.closePath(); ctx.fill();
         ctx.fillStyle = "cyan";
         ctx.beginPath(); ctx.arc(this.x + 17.5, this.y + 12, 3, 0, Math.PI*2); ctx.fill();
     }
@@ -423,25 +511,15 @@ class NormalEnemy extends Enemy {
 class ShooterEnemy extends Enemy {
     constructor(x, y) { super(x, y, 40, 40, 3, 50); this.timer = 0; }
     draw(ctx) {
-        // ★ 双管突击炮舰
-        // 舰体主体
         ctx.fillStyle = "#555";
         ctx.beginPath();
-        ctx.moveTo(this.x + 20, this.y + 40); // 机头
-        ctx.lineTo(this.x + 5, this.y + 15);  // 左侧
-        ctx.lineTo(this.x + 15, this.y);      // 左尾
-        ctx.lineTo(this.x + 25, this.y);      // 右尾
-        ctx.lineTo(this.x + 35, this.y + 15); // 右侧
+        ctx.moveTo(this.x + 20, this.y + 40); ctx.lineTo(this.x + 5, this.y + 15); ctx.lineTo(this.x + 15, this.y);
+        ctx.lineTo(this.x + 25, this.y); ctx.lineTo(this.x + 35, this.y + 15);
         ctx.closePath(); ctx.fill();
-
-        // 橙色座舱盖
         ctx.fillStyle = "orange";
         ctx.beginPath(); ctx.ellipse(this.x + 20, this.y + 20, 5, 8, 0, 0, Math.PI*2); ctx.fill();
-
-        // 两侧的黑色重炮管
         ctx.fillStyle = "#111";
-        ctx.fillRect(this.x + 4, this.y + 15, 6, 20);
-        ctx.fillRect(this.x + 30, this.y + 15, 6, 20);
+        ctx.fillRect(this.x + 4, this.y + 15, 6, 20); ctx.fillRect(this.x + 30, this.y + 15, 6, 20);
     }
     update() {
         this.y += 1.8 * diffMult; this.timer++;
@@ -453,29 +531,15 @@ class ShooterEnemy extends Enemy {
 class EliteShooter extends Enemy {
     constructor(x, y) { super(x, y, 45, 40, 3, 80); this.timer = 0; }
     draw(ctx) {
-        // ★ 重装堡垒机
-        // 红色重型装甲
         ctx.fillStyle = "#900000";
         ctx.beginPath();
-        ctx.moveTo(this.x + 22.5, this.y + 40);
-        ctx.lineTo(this.x, this.y + 20);
-        ctx.lineTo(this.x, this.y);
-        ctx.lineTo(this.x + 45, this.y);
-        ctx.lineTo(this.x + 45, this.y + 20);
+        ctx.moveTo(this.x + 22.5, this.y + 40); ctx.lineTo(this.x, this.y + 20); ctx.lineTo(this.x, this.y);
+        ctx.lineTo(this.x + 45, this.y); ctx.lineTo(this.x + 45, this.y + 20);
         ctx.closePath(); ctx.fill();
-
-        // 内部机械结构细节
-        ctx.fillStyle = "#333";
-        ctx.fillRect(this.x + 10, this.y + 5, 25, 15);
-
-        // 闪烁的金色核心
+        ctx.fillStyle = "#333"; ctx.fillRect(this.x + 10, this.y + 5, 25, 15);
         ctx.fillStyle = (this.timer % 10 < 5) ? "#FFD700" : "#FFA500";
         ctx.beginPath(); ctx.arc(this.x + 22.5, this.y + 12, 6, 0, Math.PI*2); ctx.fill();
-
-        // 侧边武装发射器
-        ctx.fillStyle = "orange";
-        ctx.fillRect(this.x - 2, this.y + 10, 8, 20);
-        ctx.fillRect(this.x + 39, this.y + 10, 8, 20);
+        ctx.fillStyle = "orange"; ctx.fillRect(this.x - 2, this.y + 10, 8, 20); ctx.fillRect(this.x + 39, this.y + 10, 8, 20);
     }
     update() {
         this.y += 1.5 * diffMult; this.timer++;
@@ -496,26 +560,13 @@ class EliteShooter extends Enemy {
 class MeteorEnemy extends Enemy {
     constructor(x, y) { super(x, y, 40, 40, 5, 25); }
     draw(ctx) {
-        // ★ 突击飞船 (类似锯齿状的冲锋舰)
         ctx.fillStyle = "#696969";
         ctx.beginPath();
-        ctx.moveTo(this.x + 20, this.y + 40); // 尖锐冲撞角
-        ctx.lineTo(this.x + 5, this.y + 20);
-        ctx.lineTo(this.x - 5, this.y);       // 张开的飞翼
-        ctx.lineTo(this.x + 20, this.y + 10); // 尾部凹槽
-        ctx.lineTo(this.x + 45, this.y);
-        ctx.lineTo(this.x + 35, this.y + 20);
-        ctx.closePath(); 
-        ctx.fill(); 
-        
-        // 飞船轮廓描边
-        ctx.strokeStyle = "#A9A9A9"; 
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // 尾部推进器红光
-        ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
-        ctx.fillRect(this.x + 13, this.y, 14, 6);
+        ctx.moveTo(this.x + 20, this.y + 40); ctx.lineTo(this.x + 5, this.y + 20); ctx.lineTo(this.x - 5, this.y); 
+        ctx.lineTo(this.x + 20, this.y + 10); ctx.lineTo(this.x + 45, this.y); ctx.lineTo(this.x + 35, this.y + 20);
+        ctx.closePath(); ctx.fill(); 
+        ctx.strokeStyle = "#A9A9A9"; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = "rgba(255, 0, 0, 0.8)"; ctx.fillRect(this.x + 13, this.y, 14, 6);
     }
     update() { this.y += 4.5 * diffMult; }
 }
@@ -608,47 +659,27 @@ class BossSplitPart extends Enemy {
         this.anchorX = (dir < 0) ? 80 : 320; this.anchorY = 120;
     }
     draw(ctx) {
-        // 原逻辑：isStationary 为 true 时，停在原地发射螺旋弹幕，我们将其视作“攻击状态”
         let isStationary = ((Math.floor(this.timer/200))%2 === 0) ^ (this.initialDir > 0);
-        
-        // 1. 根据状态选择对应的贴图
         let currentImg = isStationary ? boss2GuardAttackImg : boss2GuardImg;
+        let cx = this.x + 30; let cy = this.y + 30;
 
-        // 判定中心点 (原代码是用 x+30, y+30 画的半径30的圆，所以中心是偏移30)
-        let cx = this.x + 30;
-        let cy = this.y + 30;
-
-        // 2. 检查图片是否加载完成
         if (currentImg.complete) {
-            // 定义贴图绘制尺寸，可以比判定框（50x50）稍微大一点，增加压迫感
-            let dw = 90; 
-            let dh = 90;
-            let drawX = cx - dw / 2;
-            let drawY = cy - dh / 2;
-
-            ctx.save(); // 保存当前画布状态
-            
-            // 3. 镜像对称处理
-            // this.initialDir < 0 代表右半边，将其水平翻转，让左右分裂体看起来是对称的
+            let dw = 90; let dh = 90;
+            let drawX = cx - dw / 2; let drawY = cy - dh / 2;
+            ctx.save();
             if (this.initialDir < 0) {
-                ctx.translate(cx, cy); // 将画布原点移到中心
-                ctx.scale(-1, 1);      // 水平翻转
+                ctx.translate(cx, cy); ctx.scale(-1, 1);
                 ctx.drawImage(currentImg, -dw / 2, -dh / 2, dw, dh);
             } else {
                 ctx.drawImage(currentImg, drawX, drawY, dw, dh);
             }
-            
-            ctx.restore(); // 恢复画布状态，防止影响其他元素的绘制
+            ctx.restore();
         } else {
-            // 兜底方案：如果贴图还没加载出来，先画原来的圆圈
             let coreColor = isStationary ? "rgb(255, 60, 0)" : "rgb(0, 180, 255)";
             let grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 30);
             grad.addColorStop(0, "white"); grad.addColorStop(1, coreColor);
             ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = "white"; ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI*2); ctx.stroke();
         }
-        
-        // 4. 绘制血条 (保持原样，放置在实体上方)
         ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-15, 60, 4);
         ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-15, 60*(this.hp/this.maxHp), 4);
     }
@@ -685,69 +716,45 @@ class BossEnemy extends Enemy {
         this.level = level; this.targetX = 160; this.timer = 0; this.phase = 1;
         this.laserWarmup = 0; this.laserActive = 0; this.spiralAngle = 0;
         this.guards = []; this.isSplitTriggered = false;
-        this.lockedLaserX = 0; // ★新增：用于锁定激光的X坐标
+        this.lockedLaserX = 0;
     }
     draw(ctx) {
         if (this.isSplitTriggered) return;
-
-        // --- ★ 核心贴图代码 ---
         if (this.level === 1 && boss1Img.complete) {
-            // 定义图片的显示尺寸（比判定框稍大，增加压迫感）
-            let drawW = 220; 
-            let drawH = 220;
-            // 计算偏移量，使图片中心对齐判定框中心
-            let drawX = this.x + this.w / 2 - drawW / 2;
-            let drawY = this.y + this.h / 2 - drawH / 2;
-
+            let drawW = 220; let drawH = 220;
+            let drawX = this.x + this.w / 2 - drawW / 2; let drawY = this.y + this.h / 2 - drawH / 2;
             ctx.drawImage(boss1Img, drawX, drawY, drawW, drawH);
         } 
         else if(this.level === 2 && boss2BodyImg.complete) {
-            // 定义图片的显示尺寸（贴合你画的贴图）
-            let dw = 200; // 假设比第一关 Boss 还要稍微宽一点
-            let dh = 180;
-            // 计算偏移量，使图片中心对齐判定框中心 (判定框是 160x100)
-            let drawX = this.x + (this.w / 2) - (dw / 2);
-            let drawY = this.y + (this.h / 2) - (dh / 2);
-
+            let dw = 200; let dh = 180;
+            let drawX = this.x + (this.w / 2) - (dw / 2); let drawY = this.y + (this.h / 2) - (dh / 2);
             ctx.drawImage(boss2BodyImg, drawX, drawY, dw, dh);
-
         }
-        else {
-            // 如果是其他关卡或者图片没加载好，走原来的逻辑
-            this.drawOldSchool(ctx);
-        }
+        else { this.drawOldSchool(ctx); }
 
-        // --- 绘制血条 (放在图片上方) ---
-        ctx.fillStyle = "red"; 
-        ctx.fillRect(this.x, this.y - 25, 160, 8);
-        ctx.fillStyle = "green"; 
-        ctx.fillRect(this.x, this.y - 25, 160 * (this.hp / this.maxHp), 8);
-        ctx.strokeStyle = "white";
-        ctx.strokeRect(this.x, this.y - 25, 160, 8);
+        ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y - 25, 160, 8);
+        ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y - 25, 160 * (this.hp / this.maxHp), 8);
+        ctx.strokeStyle = "white"; ctx.strokeRect(this.x, this.y - 25, 160, 8);
 
-        // --- 激光预警与渲染 (保留原有逻辑) ---
         if (this.laserWarmup > 0) {
-            ctx.strokeStyle = "cyan"; // 换个颜色区分
+            ctx.strokeStyle = "cyan";
             if (this.timer % 4 < 2) { 
                 ctx.beginPath(); ctx.moveTo(this.lockedLaserX, this.y + 80); 
                 ctx.lineTo(this.lockedLaserX, 800); ctx.stroke(); 
             }
         }
         if (this.laserActive > 0) {
-            ctx.fillStyle = "rgba(0, 255, 255, 0.5)"; // 青色大激光，反差大
+            ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
             ctx.fillRect(this.lockedLaserX - 35, this.y + 80, 70, 800);
         }
     }
-
-    // 将原本的几何体绘图封装，防止代码太乱
     drawOldSchool(ctx) {
         let grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y+100);
         grad.addColorStop(0, "darkgray"); grad.addColorStop(1, "black");
         ctx.fillStyle = grad;
         ctx.beginPath(); ctx.ellipse(this.x+80, this.y+50, 80, 30, 0, 0, Math.PI*2); ctx.fill();
     }
-
-update() {
+    update() {
         if (this.isSplitTriggered) return;
         if (this.y < 60) this.y += 2;
         else {
@@ -779,12 +786,10 @@ update() {
             }
         }
         else if (this.phase === 2) {
-            // ★修复：加上了大括号，确保锁定坐标只在预警的第一帧执行
             if (this.timer % 120 === 0) {
                 this.laserWarmup = 40;
                 this.lockedLaserX = this.x + 80;
             }
-            
             let ringRate = Math.max(35, Math.floor(60/s));
             if (this.timer % ringRate < waves * 8 && this.timer % 8 === 0) {
                 let count = 12 + diff * 6;
@@ -796,12 +801,10 @@ update() {
             }
         }
         else if (this.phase === 3) {
-            // ★修复：加上了大括号，确保锁定坐标只在预警的第一帧执行
             if (this.timer % 80 === 0 && this.laserWarmup===0 && this.laserActive===0) {
                 this.laserWarmup = 25;
                 this.lockedLaserX = this.x + 80;
             }
-            
             if (this.timer % Math.max(1, 4-diff) === 0) {
                 let rAng = Math.random()*Math.PI*2, rSpd = 1.5+Math.random()*3*s;
                 bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
@@ -825,23 +828,17 @@ update() {
         if (this.laserActive > 0) this.laserActive--;
         
         if (this.level === 2 && hpPercent < 0.25 && !this.isSplitTriggered) {
-            this.isSplitTriggered = true;
-            this.hp = 0; // Boss 主体消失
-
-            // 在 Boss 原本的位置生成两个分裂部分
-            // 我们利用原本代码里的 Dir 来区分左右，3 和 -3 还可以用作贴图的旋转或偏移
-            enemies.push(new BossSplitPart(this.x, this.y, 3));      // 左半边
-            enemies.push(new BossSplitPart(this.x + 80, this.y, -3)); // 右半边
+            this.isSplitTriggered = true; this.hp = 0; 
+            enemies.push(new BossSplitPart(this.x, this.y, 3));      
+            enemies.push(new BossSplitPart(this.x + 80, this.y, -3)); 
         }
     }
-    
     checkHitPlayer(pRect) {
         if (this.isSplitTriggered) return false;
         if (rectIntersect({x:this.x+20, y:this.y+20, w:120, h:60}, pRect)) return true;
         for(let g of this.guards) if (g.hp>0 && g.checkHitPlayer(pRect)) return true;
         if (this.laserActive > 0) {
             let lw = (this.level===2)?100:70;
-            // ★修复：判定的地方也改成了 lockedLaserX
             if (rectIntersect({x:this.lockedLaserX-lw/2, y:this.y+80, w:lw, h:800}, pRect)) return true;
         }
         return false;
@@ -855,45 +852,31 @@ class StarshipBoss extends Enemy {
         this.laserStep = 0; this.phase1Timer = 0; this.laserWarmup = 0; this.laserActive = 0;
         this.spiralAngle = 0;
     }
-draw(ctx) {
-        // --- ★ 绘制 Boss 贴图 ---
+    draw(ctx) {
         if (boss3Img.complete) {
-            // 定义图片的显示尺寸，比判定框（260x120）稍大一些，增加视觉压迫感
-            let drawW = 320; 
-            let drawH = 200;
-            // 计算偏移量，使图片中心对齐判定框中心
-            let drawX = this.x + this.w / 2 - drawW / 2;
-            let drawY = this.y + this.h / 2 - drawH / 2;
-
-            // 第四阶段（垂死挣扎）时给 Boss 加一个红色的滤镜效果或抖动
+            let drawW = 320; let drawH = 200;
+            let drawX = this.x + this.w / 2 - drawW / 2; let drawY = this.y + this.h / 2 - drawH / 2;
             if (this.phase === 4) {
-                ctx.save();
-                ctx.translate(Math.random() * 4 - 2, Math.random() * 4 - 2); // 轻微抖动
-                // 绘制一层淡淡的红光背景
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = "red";
+                ctx.save(); ctx.translate(Math.random() * 4 - 2, Math.random() * 4 - 2); 
+                ctx.shadowBlur = 20; ctx.shadowColor = "red";
                 ctx.drawImage(boss3Img, drawX, drawY, drawW, drawH);
                 ctx.restore();
             } else {
                 ctx.drawImage(boss3Img, drawX, drawY, drawW, drawH);
             }
         } else {
-            // 兜底：如果贴图没加载好，画原本的几何体
             if (this.phase === 4) ctx.fillStyle = "rgb(80, 30, 30)";
             else ctx.fillStyle = "rgb(50, 50, 70)";
             ctx.beginPath();
             ctx.moveTo(this.x, this.y); ctx.lineTo(this.x+130, this.y+120); 
             ctx.lineTo(this.x+260, this.y); ctx.lineTo(this.x+200, this.y+60); 
-            ctx.lineTo(this.x+60, this.y+60);
-            ctx.closePath(); ctx.fill();
+            ctx.lineTo(this.x+60, this.y+60); ctx.closePath(); ctx.fill();
         }
         
-        // --- 绘制血条 (置于顶层) ---
         ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-20, 260, 10);
         ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-20, 260*(this.hp/this.maxHp), 10);
         ctx.strokeStyle = "white"; ctx.strokeRect(this.x, this.y-20, 260, 10);
         
-        // --- 激光预警与渲染 (保持原汁原味) ---
         if (this.phase === 1) {
             let lx = 20 + this.laserStep * 40, rx = 460 - this.laserStep * 40;
             if (this.laserWarmup > 0) {
@@ -914,8 +897,9 @@ draw(ctx) {
         let hpPercent = this.hp/this.maxHp, s = diffMult;
         this.phase = (hpPercent>0.75)?1 : (hpPercent>0.5)?2 : (hpPercent>0.25)?3 : 4;
         let cx = this.x+130, cy = this.y+60, px = playerX+20, py = playerY+20;
-        let diff = menuSelection, waves = diff+1;
+        let diff = menuSelection, waves = 2*diff+1;
         
+        // ---------------- 原有的：伪装自机狙 ----------------
         let disguisedSnipeRate = Math.max(25, Math.floor(100/s));
         if (this.timer % disguisedSnipeRate === 0) {
             let baseAngle = Math.atan2(py-cy, px-cx), count = Math.floor(2+2*s);
@@ -925,74 +909,93 @@ draw(ctx) {
                 bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(baseAngle+angleNoise)*speed, Math.sin(baseAngle+angleNoise)*speed, '#32b432', true));
             }
         }
-        
+
+        // ================= 新增：全阶段正余弦范围攻击 =================
+        // 难度关联 1：难度因子 s 越大，攻击频率越高
+        let aoeRate = Math.max(20, Math.floor(70 / s)); 
+        if (this.timer % aoeRate === 0) {
+            // 难度关联 2：难度选择 diff 越大，一圈发射的子弹数越密集
+            let aoeBullets = 10 + diff * 6; 
+            let timeFactor = this.timer * 0.03; // 时间因子，用于让弹幕产生动态形变
+            
+            for (let i = 0; i < aoeBullets; i++) {
+                let baseAngle = (i / aoeBullets) * Math.PI * 2;
+                
+                // 核心机制：利用正余弦函数随时间波动的特性，叠加在基础速度上
+                // 难度关联 3：波动的振幅也受到难度 s 和 diff 的加成
+                let waveModX = Math.sin(timeFactor + baseAngle * 3) * (1.5 * s); 
+                let waveModY = Math.cos(timeFactor + baseAngle * 3) * (1.5 * s);
+                
+                let baseSpeed = 2 + diff * 0.5;
+                let vx = Math.cos(baseAngle + timeFactor) * baseSpeed + waveModX;
+                let vy = Math.sin(baseAngle + timeFactor) * baseSpeed + waveModY;
+                
+                // 发射紫色系弹幕作为特殊 AoE 标识
+                bullets.push(new Bullet(cx, cy, 9, 9, vx, vy, '#b366ff', true)); 
+            }
+        }
+        // ==============================================================
+
+        // ---------------- 以下为原有的各阶段特有逻辑 ----------------
         if (this.phase === 1) {
-            let spiralRate = Math.max(3, Math.floor(6/s));
+            let spiralRate = Math.max(3, Math.floor(8/s));
             if (this.timer % spiralRate === 0) {
-                this.spiralAngle += 0.15*s; let arms = 1+diff;
+                this.spiralAngle += 0.15*s; let arms = 2+diff;
                 for(let w=0; w<arms; w++) {
                     let offset = w*(Math.PI/arms);
-                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(this.spiralAngle+offset)*3.5, Math.sin(this.spiralAngle+offset)*3.5, 'magenta', true));
-                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(-this.spiralAngle+Math.PI+offset)*3.5, Math.sin(-this.spiralAngle+Math.PI+offset)*3.5, 'cyan', true));
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(this.spiralAngle+offset)*2.5, Math.sin(this.spiralAngle+offset)*2.5, 'magenta', true));
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(-this.spiralAngle+Math.PI+offset)*2.5, Math.sin(-this.spiralAngle+Math.PI+offset)*2.5, 'cyan', true));
                 }
             }
-            this.phase1Timer++;
-            if (this.phase1Timer === 1) this.laserWarmup = Math.max(15, Math.floor(30/s));
-            if (this.laserWarmup > 0) {
-                this.laserWarmup--; if (this.laserWarmup === 0) this.laserActive = 15;
-            } else if (this.laserActive > 0) {
-                this.laserActive--;
-                if (this.laserActive === 0) {
-                    let lx = 20+this.laserStep*40, rx = 460-this.laserStep*40;
-                    let angL = Math.atan2(py-cy, lx-cx), angR = Math.atan2(py-cy, rx-cx);
-                    let ways = diff===0?1:3, halfWays = Math.floor(ways/2);
-                    for(let i=-halfWays; i<=halfWays; i++) {
-                        bullets.push(new Bullet(lx, cy, 12, 12, Math.cos(angL+i*0.15)*4.5, Math.sin(angL+i*0.15)*4.5, 'magenta', true));
-                        bullets.push(new Bullet(rx, cy, 12, 12, Math.cos(angR+i*0.15)*4.5, Math.sin(angR+i*0.15)*4.5, 'magenta', true));
-                    }
-                    this.laserStep++;
-                    if (this.laserStep > 5) { this.laserStep=0; this.phase1Timer = -60; }
-                    else { this.phase1Timer = 0; }
+            if (this.timer % Math.floor(60/s) === 0) {
+                let ways = 5 + diff * 3;
+                for (let i = 0; i < ways; i++) {
+                    let ang = Math.PI/2 - 0.4 + i * (0.8 / (ways-1)); 
+                    bullets.push(new Bullet(cx, cy, 12, 12, Math.cos(ang)*4, Math.sin(ang)*4, 'yellow', true));
                 }
             }
         }
         else if (this.phase === 2) {
-            if (this.timer % 12 === 0) {
+            if (this.timer % 15 === 0) {
                 for(let w=0; w<waves; w++) {
-                    bullets.push(new Bullet(cx - 30*w, cy+40, 8, 8, Math.sin(this.timer*0.1)*3, 4*s, 'cyan', true));
-                    bullets.push(new Bullet(cx + 30*w, cy+40, 8, 8, Math.cos(this.timer*0.1)*3, 4*s, 'cyan', true));
+                    bullets.push(new Bullet(cx - 40*w, cy+40, 8, 8, Math.sin(this.timer*0.1)*3, 3.5*s, 'cyan', true));
+                    bullets.push(new Bullet(cx + 40*w, cy+40, 8, 8, Math.cos(this.timer*0.1)*3, 3.5*s, 'cyan', true));
                 }
             }
-            let ringRate = Math.max(30, Math.floor(50/s));
+            let ringRate = Math.max(30, Math.floor(40/s));
             if (this.timer % ringRate < waves * 8 && this.timer % 8 === 0) {
-                let count = 16 + diff*8;
+                let count = 12 + diff*6;
                 let offset = (this.timer%16===0)?0:(Math.PI/count);
-                for(let i=0; i<count; i++) {
-                    let ang = offset + i*(Math.PI*2/count);
-                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(ang)*3.2, Math.sin(ang)*3.2, 'orange', true));
+                let baseAng = Math.atan2(py-cy, px-cx); 
+                for(let i = 0; i < count; i++) {
+                    let ang = baseAng + i * (Math.PI*2 / count);
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(ang)*3.5, Math.sin(ang)*3.5, 'orange', true));
                 }
             }
         }
         else if (this.phase === 3) {
             if (!this.phase3Summoned) {
-                enemies.push(new YamatoEnemy(this.x-10, this.y+130, true));
-                enemies.push(new YamatoEnemy(this.x+220, this.y+130, true));
-                enemies.push(new YamatoEnemy(this.x+40, this.y+220, true));
-                enemies.push(new YamatoEnemy(this.x+170, this.y+220, true));
+                enemies.push(new YamatoEnemy(this.x, this.y+130, true));       
+                enemies.push(new YamatoEnemy(this.x+210, this.y+130, true));   
                 this.phase3Summoned = true;
             }
-            if (this.timer % 8 === 0) {
-                this.spiralAngle += (Math.floor(this.timer/150)%2===0?0.25:-0.25)*s;
+            if (this.timer % 10 === 0) { 
+                let rotSpeed = (Math.floor(this.timer/200)%2===0) ? 0.15 : -0.15;
+                this.spiralAngle += rotSpeed * s;
                 for(let w=0; w<waves; w++) {
                     let offset = w*(Math.PI/waves);
-                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(this.spiralAngle+offset)*4, Math.sin(this.spiralAngle+offset)*4, 'yellow', true));
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(this.spiralAngle+offset)*3.5, Math.sin(this.spiralAngle+offset)*3.5, 'yellow', true));
                 }
             }
-            if (this.timer % Math.max(1, 5-diff) === 0) {
-                let rAng = Math.random()*Math.PI*2, rSpd = 1.5+Math.random()*3*s;
-                bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
+            if (this.timer % Math.max(5, Math.floor(15/s)) === 0) {
+                let count = 4 + 1.5*diff; 
+                for(let j=0; j<count; j++) {
+                    let rAng = Math.random()*Math.PI*2; 
+                    let rSpd = 2.0 + Math.random()*2.5*s; 
+                    bullets.push(new Bullet(cx, cy, 6, 6, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
+                }
             }
-            let aimRate = Math.floor(60/s);
+            let aimRate = Math.floor(60/s); 
             if (this.timer % aimRate < waves * 6 && this.timer % 6 === 0) {
                 let bAng = Math.atan2(py-cy, px-cx);
                 let ways = 1+diff*2, halfWays = Math.floor(ways/2);
@@ -1002,22 +1005,25 @@ draw(ctx) {
             }
         }
         else if (this.phase === 4) {
-            if (this.timer % Math.max(30, 80 - diff*10) === 0) {
-                enemies.push(new MeteorEnemy(this.x+20+Math.random()*220, cy));
+            if (this.timer % Math.max(25, 60 - diff * 10) === 0) {
+                enemies.push(new MeteorEnemy(10 + Math.random() * 50, -40)); 
+                enemies.push(new MeteorEnemy(380 + Math.random() * 50, -40)); 
             }
-            if (this.timer % Math.max(3, Math.floor(12/s)) === 0) {
-                this.spiralAngle += 0.15*s; let ways = 8+diff*4;
-                for(let i=0; i<ways; i++) {
-                    let ang = this.spiralAngle + i*(Math.PI*2/ways);
-                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(ang)*3.5, Math.sin(ang)*3.5, 'orange', true));
+            if (this.timer % Math.max(4, Math.floor(12 / s)) === 0) {
+                this.spiralAngle += 0.12 * s; 
+                let ways = 4 + diff * 2;
+                for (let i = 0; i < ways; i++) {
+                    let offset = i * (Math.PI * 2 / ways);
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(this.spiralAngle + offset) * 3.5, Math.sin(this.spiralAngle + offset) * 3.5, 'orange', true));
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(-this.spiralAngle + offset) * 3.5, Math.sin(-this.spiralAngle + offset) * 3.5, 'cyan', true));
                 }
             }
-            let finalRate = Math.max(25, Math.floor(50/s));
-            if (this.timer % finalRate < waves * 5 && this.timer % 5 === 0) {
-                let ang = Math.atan2(py-cy, px-cx);
-                let ways = 3+diff*2, halfWays = Math.floor(ways/2);
-                for(let i=-halfWays; i<=halfWays; i++) {
-                    bullets.push(new Bullet(cx, cy, 12, 12, Math.cos(ang+i*0.1)*7.0, Math.sin(ang+i*0.1)*7.0, 'cyan', true));
+            let finalRate = Math.max(40, Math.floor(80 / s)); 
+            if (this.timer % finalRate < waves * 3 && this.timer % 3 === 0) {
+                let ang = Math.atan2(py - cy, px - cx);
+                let ways = 3 + diff * 2, halfWays = Math.floor(ways / 2);
+                for (let i = -halfWays; i <= halfWays; i++) {
+                    bullets.push(new Bullet(cx, cy, 12, 12, Math.cos(ang + i * 0.08) * 5.5, Math.sin(ang + i * 0.08) * 5.5, 'red', true));
                 }
             }
         }
@@ -1033,16 +1039,297 @@ draw(ctx) {
     }
 }
 
+// ==============================================================================
+// ★ 终极重构版 Level4Boss：严格契合难度的“魔神级”数值缩放
+// ==============================================================================
+class Level4Boss extends Enemy {
+    constructor(x, y) {
+        super(x, y, 220, 160, 840, 25000); 
+        this.timer = 0; 
+        this.phase = 1; 
+        
+        this.aimOffset = 0; 
+        this.rowAngle = 0;  
+    }
+    
+   draw(ctx) {
+        // ★★★ 新增：贴图绘制逻辑 ★★★
+        if (boss4Img.complete) {
+            // 根据需要微调绘制用的 w/h，这里稍微设大一点让它看起来更有气势
+            let drawW = 260; 
+            let drawH = 190;
+            // 居中绘制
+            let drawX = this.x + this.w / 2 - drawW / 2; 
+            let drawY = this.y + this.h / 2 - drawH / 2;
+            
+            ctx.drawImage(boss4Img, drawX, drawY, drawW, drawH);
+        } else {
+            // 如果图片未加载完成，保留一个备用图形（原有的渐变球逻辑）
+            let cx = this.x + this.w/2, cy = this.y + this.h/2;
+            let grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, 80);
+            grad.addColorStop(0, "white");
+            grad.addColorStop(0.5, "rgb(255, 0, 50)");
+            grad.addColorStop(1, "rgba(50, 0, 10, 0.8)");
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(cx, cy, 80, 0, Math.PI*2); ctx.fill();
+        }
+        
+        // 血条绘制保持不变
+        ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-20, this.w, 10);
+        ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-20, this.w*(this.hp/this.maxHp), 10);
+        ctx.strokeStyle = "white"; ctx.strokeRect(this.x, this.y-20, this.w, 10);
+    }
+    
+    update() {
+        if (this.y < 30) { this.y += 1; return; } 
+        this.timer++;
+        
+        let hpPercent = this.hp / this.maxHp;
+        this.phase = (hpPercent>0.75) ? 1 : (hpPercent>0.5) ? 2 : (hpPercent>0.25) ? 3 : 4;
+        
+        let cx = this.x + 100, cy = this.y + 75;
+        let px = playerX + 17.5, py = playerY + 17.5; 
+        
+        // ★ 核心难度控制器 (0: Easy, 1: Normal, 2: Hard, 3: Lunatic)
+        let diff = menuSelection; 
+
+        // ==============================================================================
+        // ★ 第一阶段：蛇形墙封锁 + 随机弹 + 自机狙 + 下落排弹
+        // ==============================================================================
+        if (this.phase === 1) {
+            
+            if (this.timer % Math.max(2,(12-5*diff)) === 0) {
+                let snakeWave = Math.sin(this.timer * 0.06) * (90+20*diff); 
+                bullets.push(new Bullet(cx - 100 + snakeWave, cy, 10, 10, 0, 4.5, 'magenta', true)); 
+                bullets.push(new Bullet(cx + 100 + snakeWave, cy, 10, 10, 0, 4.5, 'magenta', true)); 
+            }
+
+            // ★ 严格缩放：随机弹数量与速度
+            let randomStreams = 1 + diff * 2; // E:1, N:3, H:5, L:7 股
+            if (this.timer % 20 === 0) {
+                for(let i = 0; i < randomStreams; i++) {
+                    let rAng = Math.random() * Math.PI * 2;
+                    let rSpd = 1.5 + Math.random() * (1 + diff); // 难度越高，上限速度越快
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
+                }
+            }
+
+            // ★ 严格缩放：自机狙散布与速度
+            let aimSpeed = 3.5 + diff * 0.8; // E:3.5, N:4.3, H:5.1, L:5.9
+            if (this.timer % (24/(diff+1)) === 0) {
+                this.aimOffset += 0.08; 
+                let bAng = Math.atan2(py - cy, px - cx) + Math.sin(this.aimOffset) * 0.15; 
+                bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(bAng)*aimSpeed, Math.sin(bAng)*aimSpeed, 'red', true));
+            }
+            
+            let aimBurstCount = 1 + diff * 2; // E:1, N:3, H:5, L:7 (始终是奇数弹，必中中心)
+            if (this.timer % 40 === 0) {
+                let burstAng = Math.atan2(py - cy, px - cx);
+                for(let i = 0; i < aimBurstCount; i++) {
+                    let spread = (i - Math.floor(aimBurstCount/2)) * 0.12;
+                    bullets.push(new Bullet(cx, cy, 12, 12, Math.cos(burstAng+spread)*aimSpeed, Math.sin(burstAng+spread)*aimSpeed, 'orange', true));
+                }
+            }
+
+            // ★ 严格缩放：排弹的密集度与波数
+            let rowDensity = 3 + diff ;  // 颗子弹一排 (根据你的新公式)
+            let rowWaves = 1 
+            let rowCycle = 120;             
+            
+            if (this.timer % rowCycle < (rowWaves * 10) && this.timer % 10 === 0) {
+                // 修改点 1：计算 Boss 中心 (cx, cy) 瞄准玩家 (px, py) 的角度
+                let targetAngle = Math.atan2(py - cy, px - cx);
+                
+                // 修改点 2：将原本固定的 Math.PI/2 替换为 targetAngle，并保留摇摆效果
+                this.rowAngle = Math.sin(this.timer * 0.02) * 0.4; 
+                let fallAng = targetAngle + this.rowAngle; 
+                
+                let spacing = 26 - diff * 6; // 难度越高，子弹间距越小，墙越密
+                
+                for(let i = 0; i < rowDensity; i++) {
+                    let offset = (i - Math.floor(rowDensity/2)) * spacing; 
+                    
+                    // 这里 spawnX/Y 的 + Math.PI/2 不能动，它是为了让子弹横向排开
+                    let spawnX = cx + Math.cos(fallAng + Math.PI/2) * offset;
+                    let spawnY = cy + Math.sin(fallAng + Math.PI/2) * offset;
+                    
+                    bullets.push(new Bullet(spawnX, spawnY, 8, 8, Math.cos(fallAng)*3.5, Math.sin(fallAng)*3.5, 'cyan', true));
+                }
+            }
+                
+            
+        }
+        
+        // ==============================================================================
+        // ★ 第二阶段：随机弹 + 自机狙 + 半包围密集弹幕墙(圆弧)
+        // ==============================================================================
+        else if (this.phase === 2) {
+            
+            if (this.timer % (20-diff*4) === 0) {
+                let randomStreams = 1 + diff * 2; 
+                for(let i=0; i<randomStreams; i++) {
+                    let rAng = Math.random() * Math.PI * 2;
+                    bullets.push(new Bullet(cx, cy, 6, 6, Math.cos(rAng)*2.5, Math.sin(rAng)*2.5, 'pink', true));
+                }
+            }
+            if (this.timer % (8-diff) === 0) {
+                let aimAng = Math.atan2(py - cy, px - cx) + (Math.random()*0.1 - 0.05);
+                bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(aimAng)*(3.5+diff*0.8), Math.sin(aimAng)*(3.5+diff*0.8), 'red', true));
+            }
+
+            // ★ 严格缩放：圆弧释放频率与密集度
+            let arcRate = Math.max(25, 55 - diff*10); // E:55, N:45, H:35, L:25 帧释放一次
+            if (this.timer % arcRate === 0) {
+                let targetAng = Math.atan2(py - cy, px - cx); 
+                let bulletCount = 20 + diff * 20; // E:20, N:30, H:40, L:50 颗构成圆弧
+                let arcSpread = Math.PI * 1.3;    
+                let startAng = targetAng - arcSpread / 2;
+                let step = arcSpread / bulletCount;
+                
+                for (let i = 0; i <= bulletCount; i++) {
+                    // 低难度挖空缝隙逻辑
+                    if (diff <= 1) {
+                        // Easy: 每3颗空1颗, Normal: 每4颗空1颗
+                        if (i % (3 + diff*2) === 0) continue; 
+                    }
+                    let ang = startAng + i * step;
+                    bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(ang)*3.2, Math.sin(ang)*3.2, 'yellow', true));
+                }
+            }
+        }
+
+        // ==============================================================================
+        // ★ 第三阶段：随机弹 + 四股依次生成的静止弹幕 -> 乱射爆炸
+        // ==============================================================================
+        else if (this.phase === 3) {
+            
+            if (this.timer % 15 === 0) {
+                let randomStreams = 2 + diff * 2; 
+                for(let i=0; i<randomStreams; i++) {
+                    let rAng = Math.random() * Math.PI * 2;
+                    bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*2.5, Math.sin(rAng)*2.5, 'pink', true));
+                }
+            }
+
+            let cycle = this.timer % 240; 
+            let spawnPhase = Math.floor(cycle / 60); 
+            
+            if (this.timer % 3 === 0) { 
+                let sx = 0, sy = 0;
+                let progress = (cycle % 60) / 60; 
+                
+                if (spawnPhase === 0) { sx = progress * 480; sy = 180; }                
+                else if (spawnPhase === 1) { sx = 480 - progress * 480; sy = 400; }     
+                else if (spawnPhase === 2) { sx = 100; sy = progress * 800; }           
+                else if (spawnPhase === 3) { sx = 380; sy = 800 - progress * 800; }     
+                
+                // ★ 严格缩放：生成的散乱程度和子弹密度
+                let scatter = 10 + diff * 5; // E:10, N:25, H:40, L:55 (Lunatic下满屏乱撒)
+                let density = 1 + diff*2;       // E:1, N:2, H:3, L:4 颗/次
+                
+                for(let i = 0; i < density; i++) {
+                    let noiseX = (Math.random() - 0.5) * scatter;
+                    let noiseY = (Math.random() - 0.5) * scatter;
+
+                    let b = new Bullet(sx + noiseX, sy + noiseY, 8, 8, 0, 0, 'cyan', true);
+                    
+                    b.behavior = function(bul) {
+                        if (bul.timer === 80) { 
+                            let rAng = Math.random() * Math.PI * 2;
+                            // ★ 爆散速度随难度急剧上升
+                            let rSpd = 1.0 + Math.random() * (1 + diff * 0.5); 
+                            bul.dx = Math.cos(rAng) * rSpd;
+                            bul.dy = Math.sin(rAng) * rSpd;
+                            bul.color = 'orange'; 
+                            bul.behavior = null;  
+                        }
+                    };
+                    bullets.push(b);
+                }
+            }
+        }
+
+        // ==============================================================================
+        // ★ 第四阶段：围绕边角的蛇形弹幕 (真正的数学蛇形轨迹)
+        // ==============================================================================
+        else if (this.phase === 4) {
+            
+            let isFirstHalf = (this.timer % 400) < 200;
+            
+            let corners = isFirstHalf ? 
+                [{x: 40, y: 760}, {x: 440, y: 40}] :  
+                [{x: 440, y: 760}, {x: 40, y: 40}];   
+                
+            // ★ 严格缩放：蛇的数量（股数）
+            let snakeStreams = 1 + diff; // E:1, N:2, H:3, L:4 股交织
+            
+            // ★ 严格缩放：蛇的连贯性(发射间隔，越小蛇的身体越密)
+            let snakeRate = Math.max(3, 24 - diff * 4); // E:12帧, N:9帧, H:6帧, L:3帧(绝对实线)
+            
+            // ★ 严格缩放：蛇的推进速度
+            let snakeSpeed = 1.5 + diff * 0.4; // E:2.5, N:3.3, H:4.1, L:4.9
+            
+            // ★ 严格缩放：蛇的扭动幅度 (振幅)
+            let waveAmp = 1.0 + diff * 0.4; // E:1.0, N:1.5, H:2.0, L:2.5
+
+            if (this.timer % snakeRate === 0) { 
+                for (let c of corners) {
+                    for (let i = 0; i < snakeStreams; i++) {
+                        // 相位差导致多股蛇互相缠绕成麻花状
+                        let driftX = Math.sin(this.timer * 0.05 + i) * 40;
+                        let driftY = Math.cos(this.timer * 0.05 + i) * 40;
+                        let spawnX = c.x + driftX;
+                        let spawnY = c.y + driftY;
+                        
+                        let aimAng = Math.atan2(py - spawnY, px - spawnX);
+                        
+                        let b = new Bullet(spawnX, spawnY, 12, 12, Math.cos(aimAng)*snakeSpeed, Math.sin(aimAng)*snakeSpeed, 'red', true);
+                        
+                        b.behavior = function(bul) {
+                            let perpX = -Math.sin(aimAng); 
+                            let perpY = Math.cos(aimAng);
+                            
+                            // 利用正弦波与垂直向量相乘，制造完美的正交蛇形波动
+                            let wave = Math.cos(bul.timer * 0.15) * waveAmp; 
+                            
+                            bul.x += bul.dx + perpX * wave;
+                            bul.y += bul.dy + perpY * wave;
+                        };
+                        bullets.push(b);
+                    }
+                }
+            }
+            
+            // ★ 防角落蹲起机制：高频中心自机狙
+            // 难度越高，逼走位的频率和范围越恐怖
+            let snipeRate = Math.max(10, 50 - diff * 5); // E:40帧, N:30帧, H:20帧, L:10帧
+            if (this.timer % snipeRate === 0) {
+                let bAng = Math.atan2(py - cy, px - cx);
+                // 奇数弹必中判定点：E/N 是单发，H/L 是3发和5发散弹
+                let snipeCount = 1 + diff * 2; 
+                let snipeSpeed = 3.5 + diff * 1.0; 
+                
+                for(let i = 0; i < snipeCount; i++) {
+                    let spread = (i - Math.floor(snipeCount/2)) * 0.15;
+                    bullets.push(new Bullet(cx, cy, 14, 14, Math.cos(bAng+spread)*snipeSpeed, Math.sin(bAng+spread)*snipeSpeed, '#32b432', true));
+                }
+            }
+        }
+    }
+}
+
 // --- 游戏主逻辑 ---
 
 function startGame() {
     diffMult = (menuSelection===0)?1.0 : (menuSelection===1)?1.5 : (menuSelection===2)?1.8 : 2.2;
     currentDiffMult = diffMult;
-    maxPlayerHP = (menuSelection===0)?6 : (menuSelection===1)?5 : 4;
+    maxPlayerHP = (menuSelection===0)?8 : (menuSelection===1)?6 : 5;
     playerHP = maxPlayerHP;
     playerBomb = 2; bombActiveTimer = 0;
     playerX = 220; playerY = 600;
     score = 0; currentLevel = 1; timerCount = 0;
+    levelTimer = 0; // 重置关卡时间
+    reward8k = false; reward20k = false; // 重置奖励标记
     invincibilityFrame = 0; bossSpawned = false; isPaused = false;
     bullets = []; enemies = []; items = [];
     gameState = 1;
@@ -1054,15 +1341,13 @@ function takeDamage() {
         if(playerHP==1){playerBomb++;}
         invincibilityFrame = 60;
         if (playerHP <= 0) gameState = 2;
-        checkHighScore(); // ★新增：检查并保存最高分
+        checkHighScore(); 
     }
-
 }
-// ★新增一个检查最高分的函数
+
 function checkHighScore() {
     if (score > highScore) {
         highScore = score;
-        // 保存到浏览器的 LocalStorage 中
         localStorage.setItem('planeGameHighScore', highScore);
     }
 }
@@ -1073,7 +1358,6 @@ function update() {
     timerCount++;
     if (invincibilityFrame > 0) invincibilityFrame--;
     
-    // BOMB 逻辑
     if (bombActiveTimer > 0) {
         bombActiveTimer--;
         bullets = bullets.filter(b => !b.isEnemyBullet);
@@ -1084,21 +1368,33 @@ function update() {
     
     let speed = keys.Shift ? 3 : 7;
     if (keys.ArrowLeft && playerX > 0) playerX -= speed;
-    if (keys.ArrowRight && playerX < 440) playerX += speed; // Canvas 480 - width 40 = 440
+    if (keys.ArrowRight && playerX < 440) playerX += speed; 
     if (keys.ArrowUp && playerY > 0) playerY -= speed;
     if (keys.ArrowDown && playerY < 760) playerY += speed;
     
+    // ----------------- 新增：第四关起双排火力 -----------------
     if (keys.z && timerCount % 5 === 0) {
-        bullets.push(new Bullet(playerX+15, playerY, 8, 12, 0, -12, 'yellow', false));
+        if (currentLevel >= 4) {
+            // 第四关火力升级：双发激光，宽度调整贴合机体两侧
+            bullets.push(new Bullet(playerX + 5, playerY, 8, 12, 0, -12, 'yellow', false));
+            bullets.push(new Bullet(playerX + 25, playerY, 8, 12, 0, -12, 'yellow', false));
+        } else {
+            bullets.push(new Bullet(playerX + 15, playerY, 8, 12, 0, -12, 'yellow', false));
+        }
     }
     
     // 刷怪逻辑
-    if (!bossSpawned) {
-        if (currentLevel === 1 && score >= 300) { enemies.push(new BossEnemy(150, -100, 1)); bossSpawned = true; }
-        else if (currentLevel === 2 && score >= 2500) { enemies.push(new BossEnemy(150, -100, 2)); bossSpawned = true; }
-        else if (currentLevel === 3 && score >= 6000) { enemies.push(new StarshipBoss(110, -150)); bossSpawned = true; }
+if (!bossSpawned) {
+        // 40帧 = 1秒。30s=1200, 45s=1800, 60s=2400, 80s=3200
+        if (currentLevel === 1 && levelTimer >= 1200) { enemies.push(new BossEnemy(150, -100, 1)); bossSpawned = true; }
+        else if (currentLevel === 2 && levelTimer >= 1800) { enemies.push(new BossEnemy(150, -100, 2)); bossSpawned = true; }
+        else if (currentLevel === 3 && levelTimer >= 2400) { enemies.push(new StarshipBoss(110, -150)); bossSpawned = true; }
+        else if (currentLevel === 4 && levelTimer >= 3200) { enemies.push(new Level4Boss(140, -150)); bossSpawned = true; }
         else {
-            let spawnRate = Math.max(15, Math.floor(60/diffMult));
+            // 第四关基础刷新率 1.5 倍
+            let spawnRate = Math.max(27, Math.floor(45/(1+0.4*diffMult)));
+            if (currentLevel === 4) spawnRate = 45
+            
             if (timerCount % spawnRate === 0) {
                 let rx = randomNextInt(400);
                 if (currentLevel === 1) {
@@ -1114,6 +1410,13 @@ function update() {
                         let swarmCount = (menuSelection===0)?8 : (menuSelection===1)?12 : (menuSelection===2)?16 : 24;
                         for(let i=0; i<swarmCount; i++) enemies.push(new SwarmMinion(rx+(i%4)*25-35, -40-Math.floor(i/4)*25));
                     }
+                } else if (currentLevel === 4) {
+                    // ★修改：彻底移除小飞机群，重新分配概率（40%扇形狙，40%正余弦，20%陨石冲锋）
+                    let r = randomNextInt(100);
+                    if (r < 50) enemies.push(new FanAimEnemy(rx, -40));
+                    else  enemies.push(new SineCosineEnemy(rx, -40));
+                   
+                    
                 }
             }
         }
@@ -1121,24 +1424,27 @@ function update() {
     
     bullets.forEach(b => b.update());
     let hitBox = {x: playerX+16, y: playerY+16, w: 3, h: 3};
+    // ★★★ 修改：给道具单独设定一个极大的吸收范围框（比如 120x120）
+    let itemHitBox = {x: playerX - 40, y: playerY - 40, w: 120, h: 120};
     
-    // 道具逻辑
-    for(let i = items.length - 1; i >= 0; i--) {
+for(let i = items.length - 1; i >= 0; i--) {
         let item = items[i];
         item.update();
-        if (rectIntersect(item.getRect(), hitBox)) {
+        if (rectIntersect(item.getRect(), itemHitBox)) { // 使用扩大的范围
             if (item.type === 0) playerBomb++;
             else if (item.type === 1) {
                 if (playerHP < maxPlayerHP) playerHP++;
                 else score += 1000;
+            } 
+            else if (item.type === 2) {
+                score += 100; // 捡到蓝色加分道具加 100 分
             }
             items.splice(i, 1);
         }
     }
     
-    let triggerLevel2 = false, triggerLevel3 = false, triggerWin = false;
+    let triggerLevel2 = false, triggerLevel3 = false, triggerLevel4 = false, triggerWin = false;
     
-    // 敌人与子弹碰撞
     for(let i = enemies.length - 1; i >= 0; i--) {
         let en = enemies[i];
         en.update();
@@ -1151,13 +1457,27 @@ function update() {
                 bullets.splice(j, 1);
                 if (en.hp <= 0) {
                     score += en.scoreValue;
+                    // ★★★ 新增：非 Boss 怪物死亡时掉落分数道具并加速时间轴
+                    let isBoss = (en instanceof BossEnemy || en instanceof StarshipBoss || en instanceof BossSplitPart || en instanceof Level4Boss);
+                    if (!isBoss) {
+                        items.push(new Item(en.x + en.w/2, en.y + en.h/2, 2)); 
+                        if (!bossSpawned) {
+                            // 换算成帧数：0.5s=20帧, 1s=40帧, 1.2s=48帧, 2s=80帧
+                            if (currentLevel === 1) levelTimer += 20; 
+                            else if (currentLevel === 2) levelTimer += 40; 
+                            else if (currentLevel === 3) levelTimer += 48; 
+                            else if (currentLevel === 4) levelTimer += 80; 
+                        }
+                    }
                     if (en instanceof BossEnemy && currentLevel === 1) {
                         triggerLevel2 = true; items.push(new Item(en.x+80, en.y+50, 0));
                     } else if (en instanceof BossSplitPart) {
                         let splitsLeft = enemies.filter(e => e instanceof BossSplitPart).length;
                         if (splitsLeft <= 1) { triggerLevel3 = true; items.push(new Item(en.x+30, en.y+30, 1)); }
                     } else if (en instanceof StarshipBoss) {
-                        triggerWin = true;
+                        triggerLevel4 = true; // 星舰打完进第四关
+                    } else if (en instanceof Level4Boss) {
+                        triggerWin = true; // 终极 Boss 打完才是通关
                     }
                     enemies.splice(i, 1);
                 }
@@ -1166,18 +1486,50 @@ function update() {
         }
     }
     
-   if (triggerLevel2) { 
-        // 触发剧情，剧情播完后自动跳转到 Level 2 (gameState 1)
+    if (triggerLevel2) { 
         triggerScene('end_level_1', 1); 
-        
-        // 执行原本的转场清理逻辑
-        currentLevel = 2; bossSpawned = false; bullets = []; enemies = []; 
+        currentLevel = 2; bossSpawned = false; bullets = []; enemies = []; levelTimer = 0;
     }
     if (triggerLevel3) { 
         triggerScene('end_level_2', 1);
-        currentLevel=3; bossSpawned=false; bullets=[]; enemies=[]; score=Math.max(score,5000); }
-    if (triggerWin) { triggerScene('end_level_3', 3); checkHighScore();}
-    
+        currentLevel=3; bossSpawned=false; bullets=[]; enemies=[]; score=Math.max(score,5000); levelTimer = 0;
+    }
+    if (triggerLevel4) {
+        triggerScene('end_level_3', 1);
+        currentLevel=4; bossSpawned=false; bullets=[]; enemies=[]; score=Math.max(score,10000); levelTimer = 0;
+    }
+    if (triggerWin) { 
+        // 定义一个数组，索引0-3分别对应Easy, Normal, Hard, Lunatic的剧情键值
+        let baseMult = 1.0;
+        if (menuSelection === 0) baseMult = 1.0;      // Easy
+        else if (menuSelection === 1) baseMult = 1.5; // Normal
+        else if (menuSelection === 2) baseMult = 1.8; // Hard
+        else if (menuSelection === 3) baseMult = 2.4; // Lunatic
+
+        let hpMult = playerHP * 0.05;     // 每滴血 +0.05
+        let bombMult = playerBomb * 0.1;  // 每个B +0.1
+
+        let totalMult = baseMult + hpMult + bombMult;
+        
+        // 计算最终得分并向下取整
+        score = Math.floor(score * totalMult);
+        const endingScenes = ['end_level_4_easy', 'end_level_4_normal', 'end_level_4_hard', 'end_level_4_lunatic'];
+        triggerScene(endingScenes[menuSelection], 3); 
+
+        currentDialogueLines = [...currentDialogueLines, `【系统】：战斗结算完毕，最终得分：${score} `];
+        checkHighScore();
+    }
+    // ★★★ 新增：达到特定分数时从屏幕上方空投 B 和 HP
+    if (!reward8k && score >= 12000) {
+        reward8k = true;
+        items.push(new Item(180, -20, 0)); // 掉落 B
+        items.push(new Item(260, -20, 1)); // 掉落 HP
+    }
+    if (!reward20k && score >= 28000) {
+        reward20k = true;
+        items.push(new Item(180, -20, 0)); 
+        items.push(new Item(260, -20, 1)); 
+    }
     for(let b of bullets) {
         if (b.isEnemyBullet && rectIntersect(b.getRect(), hitBox)) takeDamage();
     }
@@ -1187,7 +1539,6 @@ function update() {
 }
 
 function draw() {
-    // 刷新背景
     ctx.fillStyle = "rgb(15, 15, 35)";
     ctx.fillRect(0, 0, 480, 800);
     
@@ -1217,21 +1568,13 @@ function draw() {
         ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", 150, 420);
         return;
     }
-    // --- ★新增：剧情模式 (CG与对话) 渲染 ---
     if (gameState === 4) {
-        // 1. 绘制 CG 图片区 (屏幕上半部分)
-        // 注意：当你有了真实的图片素材后，这里需要替换为 ctx.drawImage(...)
-        // 这里只是为了让代码直接运行出效果，使用剧情数据里定义的矩形画一个示意图。
-        ctx.fillStyle = "#000"; // 如果 CG 不足 480x400，用黑色填充剩余部分
+        ctx.fillStyle = "#000"; 
         ctx.fillRect(0, 0, 480, 400); 
-
- if (currentSceneRects) {
+        if (currentSceneRects) {
             currentSceneRects.forEach(r => {
-                // 数据里没有定义 x, y 则居中或靠顶对齐
                 const rx = r.x || (480 - r.w) / 2;
                 const ry = r.y || 0;
-                
-                // ★修改：如果存在 img 属性，就画图片；否则画色块
                 if (r.img) {
                     ctx.drawImage(r.img, rx, ry, r.w, r.h);
                 } else {
@@ -1241,81 +1584,52 @@ function draw() {
             });
         }
         
-        // 2. 绘制对话框 (屏幕下半部分)
-        ctx.fillStyle = "rgba(0, 0, 0, 0.8)"; // 黑色半透明
-        ctx.strokeStyle = "rgb(100, 100, 255)"; // 蓝色边框
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)"; 
+        ctx.strokeStyle = "rgb(100, 100, 255)"; 
         ctx.lineWidth = 2;
-        // 在屏幕下方 400px 开始画对话框
         ctx.beginPath();
         ctx.rect(10, 410, 460, 380); 
         ctx.fill();
         ctx.stroke();
         
-        // 3. 绘制对话文字
         if (currentDialogueLines[currentDialogueIndex]) {
             ctx.fillStyle = "white";
             ctx.font = "20px '黑体', 'SansSerif', sans-serif";
             const text = currentDialogueLines[currentDialogueIndex];
-            // 文字排版（这部分在 Canvas 里比较麻烦，我们做一个简单的自动换行）
             wrapText(ctx, text, 30, 450, 420, 30);
         }
         
-        // 4. 绘制“按 Z 继续”的提示
-        if (timerCount % 30 < 15) { // 闪烁提示
+        if (timerCount % 30 < 15) { 
             ctx.fillStyle = "gray";
             ctx.font = "16px sans-serif";
             ctx.fillText("按 Z 键继续...", 360, 770);
         }
         return;
     }
-    // --- ★剧情模式渲染结束 ---
 
-    // --- 游戏中渲染 ---
     if (bombActiveTimer > 0) {
         ctx.fillStyle = "rgba(0, 255, 255, 0.47)";
         let radius = (60 - bombActiveTimer) * 15;
         ctx.beginPath(); ctx.arc(playerX+20, playerY+20, radius, 0, Math.PI*2); ctx.fill();
     }
     
-
-// 玩家
     if (invincibilityFrame % 4 < 2 || bombActiveTimer > 0) {
-    // 1. 定义判定点中心 (真理中心)
-    let cx = playerX + 17.5;
-    let cy = playerY + 17.5;
+        let cx = playerX + 17.5; let cy = playerY + 17.5;
+        let dw = 80; let dh = 80; 
+        ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
 
-    // 2. 绘制飞机图片
-    // 假设你的图片是 64x64 像素（你可以根据实际图片大小调整这里 dw, dh）
-    let dw = 80; // 绘制宽度
-    let dh = 80; // 绘制高度
-    
-    // 绘制位置计算：中心点减去宽高的一半，确保图片中心对齐判定点
-    ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
+        ctx.fillStyle = "rgba(0, 255, 255, 0.8)";
+        ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+        
+        ctx.fillStyle = "white";
+        ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
 
-    // 3. 灵魂判定点 (一定要保留，否则你看不清碰撞位置)
-    // 建议在 Shift 低速模式或被攻击时显示
-    ctx.fillStyle = "rgba(0, 255, 255, 0.8)";
-    ctx.beginPath();
-    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-    ctx.fill();
-    
-    ctx.fillStyle = "white";
-    ctx.beginPath();
-    ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 4. 动态尾焰 (可选：如果图片自带火苗可以不画，不自带可以用代码补一个)
-    if (timerCount % 4 < 2) {
-        ctx.fillStyle = "#FFCC00";
-        ctx.beginPath();
-        ctx.moveTo(cx - 5, cy + 25);
-        ctx.lineTo(cx + 5, cy + 25);
-        ctx.lineTo(cx, cy + 35);
-        ctx.fill();
+        if (timerCount % 4 < 2) {
+            ctx.fillStyle = "#FFCC00";
+            ctx.beginPath(); ctx.moveTo(cx - 5, cy + 25); ctx.lineTo(cx + 5, cy + 25); ctx.lineTo(cx, cy + 35); ctx.fill();
+        }
     }
-}
 
-    // UI
     ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.fillText("HP:", 10, 50);
     ctx.fillStyle = "darkgray"; ctx.fillRect(40, 38, 150, 15);
     ctx.fillStyle = "red"; ctx.fillRect(40, 38, 150 * (playerHP/maxPlayerHP), 15);
@@ -1338,17 +1652,13 @@ function draw() {
     ctx.fillStyle = "white"; ctx.font = "14px Arial";
     ctx.fillText("Level: " + currentLevel + " Score: " + score, 10, 20);
     ctx.fillText("Difficulty: " + diffNames[menuSelection].split('(')[0], 360, 20);
-    // ★新增：画出本地最高分
     ctx.fillStyle = "gold";
     ctx.fillText("High Score: " + Math.max(score, highScore), 10, 35);
 
-    // Boss 指示器
     if (bossSpawned) {
-        // ctx.fillStyle = "rgba(0, 0, 0, 0.78)"; ctx.fillRect(0, 710, 480, 40);
         for(let e of enemies) {
-            if (e instanceof BossEnemy || e instanceof StarshipBoss || e instanceof BossSplitPart) {
+            if (e instanceof BossEnemy || e instanceof StarshipBoss || e instanceof BossSplitPart || e instanceof Level4Boss) {
                 let bx = Math.max(15, Math.min(465, e.x + e.w/2));
- 
                 ctx.fillStyle = "white";
                 ctx.beginPath(); ctx.moveTo(bx, 770); ctx.lineTo(bx-12, 790); ctx.lineTo(bx+12, 790); ctx.closePath(); ctx.fill();
                 ctx.fillStyle = "red";
@@ -1364,33 +1674,24 @@ function draw() {
     }
 }
 
-// --- 核心游戏循环 (Fixed Timestep @ 40 FPS) ---
 const FPS = 40;
-const frameInterval = 1000 / FPS; // 25ms 完美复刻 Timer(25)
+const frameInterval = 1000 / FPS; 
 let lastTime = performance.now();
 let accumulator = 0;
 
 function gameLoop(currentTime) {
     requestAnimationFrame(gameLoop);
-    
     let deltaTime = currentTime - lastTime;
     lastTime = currentTime;
-    
-    // 避免因为页面切走导致 deltaTime 过大产生“死亡螺旋”跳帧
     if (deltaTime > 250) deltaTime = 250;
-    
     accumulator += deltaTime;
-    
-    // 保证逻辑帧的绝对稳定，不随显示器刷新率变化
     while (accumulator >= frameInterval) {
         update();
         accumulator -= frameInterval;
     }
-    
     draw();
 }
 
-// 启动循环
 requestAnimationFrame(gameLoop);
 
 </script>
