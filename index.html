@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>HTML5 飞机大战 - 终极星舰版</title>
+    <title>幻想战姬传</title>
     <style>
         body {
             margin: 0;
@@ -13,11 +13,11 @@
             align-items: center;
             height: 100vh;
             color: white;
-            font-family: 'SansSerif', 'Arial', sans-serif;
+            font-family: 'Microsoft YaHei', 'SansSerif', 'Arial', sans-serif;
         }
         canvas {
             background-color: rgb(15, 15, 35);
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
             /* 保证在高分屏下也不模糊 */
             image-rendering: pixelated; 
         }
@@ -25,13 +25,19 @@
 </head>
 <body>
 
-<canvas id="gameCanvas" width="480" height="800"></canvas>
+<canvas id="gameCanvas" width="760" height="800"></canvas>
 
 <script>
 /**
  * HTML5 飞机大战 - 终极星舰版
  * 移植自 Java Swing 版本，保证 40 FPS (25ms) 逻辑帧同步
  */
+
+// --- 全局尺寸常量定义 ---
+const GAME_WIDTH = 560;
+const GAME_HEIGHT = 800;
+const SIDEBAR_WIDTH = 200;
+const TOTAL_WIDTH = GAME_WIDTH + SIDEBAR_WIDTH;
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -54,20 +60,37 @@ playerImg.src = 'player_ship.png';
 const boss3Img = new Image();
 boss3Img.src = 'boss3_starship.png'; 
 const boss4Img = new Image();
-boss4Img.src = 'boss4_coil.png'; // 假设您的贴图文件名为 boss4_coil.png
+boss4Img.src = 'boss4_coil.png'; 
 
 // --- 游戏全局状态 ---
 let gameState = 0; // 0=菜单，1=游戏中，2=死亡，3=胜利，4=剧情
 let isPaused = false;
-let menuSelection = 1;
 const diffNames = ["Easy(闭眼应对的程度)", "Normal(认真应对的程度)", "Hard(进阶级别的程度)", "Lunatic(魔神级别的程度)"];
+
+// --- 新增：选关模式与本地存档控制 ---
+let menuDepth = 0;      // 0: 模式选择, 1: 难度选择, 2: 关卡选择
+let modeSelection = 0;  // 0: 故事模式, 1: 选关模式
+let menuSelection = 1;  // 难度选择 (默认 Normal)
+let stageSelection = 0; // 关卡选择 (0-3 对应关卡 1-4)
+let isStagePractice = false;
+
+// 本地存档数据结构：分别记录4个难度下解锁到的最大关卡(1-4)
+let saveProgress = JSON.parse(localStorage.getItem('planeGameProgress_v1')) || { unlocked: [1, 1, 1, 1] };
+
+function saveUnlock(level) {
+    if (saveProgress.unlocked[menuSelection] < level) {
+        saveProgress.unlocked[menuSelection] = level;
+        localStorage.setItem('planeGameProgress_v1', JSON.stringify(saveProgress));
+    }
+}
+// -----------------------------------
 
 let diffMult = 1.0;
 let currentDiffMult = 1.0;
 
-let playerX = 220, playerY = 600, score = 0, currentLevel = 1, timerCount = 0;
+// 自机初始位置居中适配新的 GAME_WIDTH
+let playerX = GAME_WIDTH / 2 - 20, playerY = 600, score = 0, currentLevel = 1, timerCount = 0;
 
-// --- 新增：关卡专属计时器和分数奖励标记 ---
 let levelTimer = 0; 
 let reward8k = false;
 let reward20k = false;
@@ -75,7 +98,7 @@ let reward20k = false;
 let playerHP = 3, maxPlayerHP = 3;
 let invincibilityFrame = 0;
 let playerBomb = 2, bombActiveTimer = 0;
-let deathBombTimer = 0; // ★★★ 新增：决死计时器 (8帧 = 0.2秒)
+let deathBombTimer = 0; 
 
 let bullets = [];
 let enemies = [];
@@ -92,7 +115,7 @@ let postSceneState = 1;
 const storyData = {
     start_level_1: {
         CG: [
-            {img: bgStart1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgStart1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -104,7 +127,7 @@ const storyData = {
     },
     end_level_1: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -117,7 +140,7 @@ const storyData = {
     },
     end_level_2: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -134,7 +157,7 @@ const storyData = {
     },
     end_level_3: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -150,7 +173,7 @@ const storyData = {
     },
     end_level_4_easy: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -162,7 +185,7 @@ const storyData = {
     },
     end_level_4_normal: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -174,7 +197,7 @@ const storyData = {
     },
     end_level_4_hard: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -187,7 +210,7 @@ const storyData = {
     },
     end_level_4_lunatic: {
         CG: [
-            {img: bgEnd1, w: 480, h: 400, x: 0, y: 0},
+            {img: bgEnd1, w: GAME_WIDTH, h: 400, x: 0, y: 0},
             {img: imgTang, w: 150, h: 150, y: 250, x: 20},
         ],
         text: [
@@ -205,7 +228,7 @@ let highScore = localStorage.getItem('planeGameHighScore') || 0;
 
 const keys = {
     ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
-    z: false, x: false, p: false, Shift: false
+    z: false, x: false, p: false, q: false, Shift: false
 };
 
 window.addEventListener('keydown', (e) => {
@@ -220,6 +243,7 @@ window.addEventListener('keydown', (e) => {
     if (k.toLowerCase() === 'z') { keys.z = true; handleZPress(); }
     if (k.toLowerCase() === 'x') { keys.x = true; handleXPress(); }
     if (k.toLowerCase() === 'p') { keys.p = true; handlePPress(); }
+    if (k.toLowerCase() === 'q') { keys.q = true; handleQPress(); }
     if (k === 'Shift') keys.Shift = true;
 });
 
@@ -232,22 +256,46 @@ window.addEventListener('keyup', (e) => {
     if (k.toLowerCase() === 'z') keys.z = false;
     if (k.toLowerCase() === 'x') keys.x = false;
     if (k.toLowerCase() === 'p') keys.p = false;
+    if (k.toLowerCase() === 'q') keys.q = false;
     if (k === 'Shift') keys.Shift = false;
 });
 
+// --- 修改后的菜单控制与Z键逻辑 ---
 function handleZPress() {
-    if (gameState === 0) {startGame(); triggerScene('start_level_1', 1);}
+    if (gameState === 0) {
+        if (menuDepth === 0) {
+            isStagePractice = (modeSelection === 1);
+            menuDepth = 1;
+        } else if (menuDepth === 1) {
+            if (isStagePractice) {
+                menuDepth = 2; 
+                stageSelection = 0; 
+            } else {
+                startGame(); triggerScene('start_level_1', 1);
+            }
+        } else if (menuDepth === 2) {
+            let maxUnlocked = saveProgress.unlocked[menuSelection];
+            if (stageSelection + 1 <= maxUnlocked) {
+                startGame();
+                let startCGs = ['start_level_1', 'end_level_1', 'end_level_2', 'end_level_3'];
+                triggerScene(startCGs[stageSelection], 1);
+            }
+        }
+    }
     else if (gameState === 4) { advanceDialogue(); }
-    else if (gameState === 2 || gameState === 3) { gameState = 0; }
+    else if (gameState === 2 || gameState === 3) { gameState = 0; menuDepth = 0; }
 }
 
 function handleXPress() {
-    if (gameState === 1 && !isPaused) {
+    if (gameState === 0 && menuDepth > 0) {
+        menuDepth--; // 菜单返回
+    }
+    else if (gameState === 1 && !isPaused) {
         if (playerBomb > 0 && bombActiveTimer <= 0) {
             playerBomb--;
             bombActiveTimer = 60;
-            deathBombTimer = 0; // ★★★ 决死成功！清除决死状态，免除掉血
-            invincibilityFrame = 60; // 额外给一点无敌帧
+            deathBombTimer = 0; 
+            invincibilityFrame = 60; 
         }
     }
 }
@@ -256,10 +304,26 @@ function handlePPress() {
     if (gameState === 1) isPaused = !isPaused;
 }
 
+function handleQPress() {
+    if (gameState === 1 && isPaused) {
+        gameState = 0;
+        menuDepth = 0;
+        isPaused = false;
+    }
+}
+
 window.addEventListener('keydown', (e) => {
     if (gameState === 0) {
-        if (e.key === 'ArrowUp') menuSelection = (menuSelection > 0) ? menuSelection - 1 : 3;
-        if (e.key === 'ArrowDown') menuSelection = (menuSelection < 3) ? menuSelection + 1 : 0;
+        if (e.key === 'ArrowUp') {
+            if (menuDepth === 0) modeSelection = (modeSelection > 0) ? 0 : 1;
+            else if (menuDepth === 1) menuSelection = (menuSelection > 0) ? menuSelection - 1 : 3;
+            else if (menuDepth === 2) stageSelection = (stageSelection > 0) ? stageSelection - 1 : 3;
+        }
+        if (e.key === 'ArrowDown') {
+            if (menuDepth === 0) modeSelection = (modeSelection < 1) ? 1 : 0;
+            else if (menuDepth === 1) menuSelection = (menuSelection < 3) ? menuSelection + 1 : 0;
+            else if (menuDepth === 2) stageSelection = (stageSelection < 3) ? stageSelection + 1 : 0;
+        }
     }
 });
 
@@ -306,7 +370,7 @@ function darkenColor(cStr) {
     const map = {
         'magenta': '#8b008b', 'cyan': '#008b8b', 'orange': '#cc5500', 
         'pink': '#ff69b4', 'yellow': '#b8860b', 'red': '#8b0000',
-        '#32b432': '#195a19', 'green': '#006400'
+        '#32b432': '#195a19', 'green': '#006400', '#b366ff': '#6600cc'
     };
     return map[cStr.toLowerCase()] || '#555';
 }
@@ -336,7 +400,6 @@ class Item {
             ctx.fillStyle = "white";
             ctx.fillText("H", this.x + 5, this.y + 16);
         } else if (this.type === 2) {
-            // 新增：类似经典弹幕游戏里的蓝色“点道具”
             ctx.fillStyle = "#87CEFA"; 
             ctx.fillRect(this.x + 4, this.y + 4, 12, 12);
             ctx.strokeStyle = "white";
@@ -347,7 +410,6 @@ class Item {
 }
 
 class Bullet {
-    // 新增 behavior 参数，用于实现第四关蛇形、冰冻等复杂弹道
     constructor(x, y, w, h, dx, dy, color, isEnemy, behavior = null) {
         this.x = x; this.y = y; this.w = w; this.h = h;
         this.dx = dx; this.dy = dy; this.color = color;
@@ -357,7 +419,7 @@ class Bullet {
         if (!isEnemy) this.type = 0;
         else {
             let c = color.toLowerCase();
-            if (c==='magenta' || c==='cyan' || c==='orange' || c==='pink' || c==='#32b432') this.type = 1;
+            if (c==='magenta' || c==='cyan' || c==='orange' || c==='pink' || c==='#32b432' || c==='#b366ff') this.type = 1;
             else this.type = 2;
         }
     }
@@ -371,32 +433,20 @@ class Bullet {
     }
     getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
     draw(ctx) {
-    if (this.type === 0) {
-   let cx = this.x + this.w / 2;
+        if (this.type === 0) {
+            let cx = this.x + this.w / 2;
             let cy = this.y + this.h / 2;
             
             if (this.behavior) {
-                // --- NEW: 辅机直射圆弹（小圆弹） ---
-                // 使用辅机弹独特的青色，采用和主炮一样的“光晕+核心”结构
-                
-                // 1. 外层青色光晕
                 ctx.fillStyle = "rgba(0, 255, 204, 0.4)"; 
                 ctx.beginPath();
-                // 追踪直射弹初始w为8，r为4。这里画个r为6的光晕。
                 ctx.arc(cx, cy, this.w / 2 + 2, 0, Math.PI * 2); 
                 ctx.fill();
-                
-                // 2. 内层白色核心
                 ctx.fillStyle = "white";
                 ctx.beginPath();
-                // r为3的核心。
                 ctx.arc(cx, cy, this.w / 2 - 1, 0, Math.PI * 2); 
                 ctx.fill();
-
             } else {
-                // ... (保留原有的黄色椭圆子弹绘制逻辑) ...
-                let cx = this.x + this.w / 2;
-                let cy = this.y + this.h / 2;
                 ctx.fillStyle = "rgba(255, 255, 0, 0.4)";
                 ctx.beginPath();
                 ctx.ellipse(cx, cy, this.w / 2 + 2, this.h / 2 + 6, 0, 0, Math.PI * 2);
@@ -435,7 +485,9 @@ class Enemy {
     constructor(x, y, w, h, hp, score) {
         this.x = x; this.y = y; this.w = w; this.h = h;
         this.hp = hp; this.maxHp = hp; this.scoreValue = score;
+        this.transitionTimer = 0; // 新增：状态切换计时器
     }
+    get isInvincible() { return this.transitionTimer > 0; }
     draw(ctx) {}
     update() {}
     getRect() { return {x: this.x, y: this.y, w: this.w, h: this.h}; }
@@ -447,9 +499,6 @@ class Enemy {
     }
 }
 
-// ----------------- 新增第四关小怪 -----------------
-
-// 第四关：发射扇形随机弹+自机狙
 class FanAimEnemy extends Enemy {
     constructor(x, y) { super(x, y, 40, 40, 16, 500); this.timer = 0; }
     draw(ctx) {
@@ -468,13 +517,9 @@ class FanAimEnemy extends Enemy {
         if (this.timer % rate === 0) {
             let cx = this.x + 20, cy = this.y + 20;
             let aimAng = Math.atan2((playerY+20)-cy, (playerX+20)-cx);
-            
-            // ★修改：自机狙速度随难度上升 (Easy约为3.0，Lunatic约为4.2)
             let aimSpd = 2.0 + diffMult*2; 
             bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(aimAng)*aimSpd, Math.sin(aimAng)*aimSpd, 'red', true));
-            
             let count = (menuSelection === 0) ? 2 : 4 + menuSelection*2;
-            // ★修改：扇形散弹速度也随难度上升 (比自机狙稍微慢一点，形成层次)
             let fanSpd = 1.0 + diffMult; 
             for(let i=0; i<count; i++) {
                 let rAng = aimAng + (Math.random()*1.5 - 0.75);
@@ -483,7 +528,7 @@ class FanAimEnemy extends Enemy {
         }
     }
 }
-// 第四关：360度正余弦交替子弹
+
 class SineCosineEnemy extends Enemy {
     constructor(x, y) { super(x, y, 40, 40, 16, 500); this.timer = 0; }
     draw(ctx) {
@@ -499,25 +544,18 @@ class SineCosineEnemy extends Enemy {
             let cx = this.x + 20, cy = this.y + 20;
             let ways = 4 + menuSelection * 3;
             let phaseOffset = this.timer * 0.05;
-            
-            // ★修改：基础速度和波动幅度根据难度放大
-            let baseSpd = 1 + diffMult * 1; // 基础初速
-            let waveAmp = 0.2 + diffMult * 0.3; // 波动振幅
-            
+            let baseSpd = 1 + diffMult * 1; 
+            let waveAmp = 0.2 + diffMult * 0.3; 
             for(let i=0; i<ways; i++) {
                 let baseAng = i * (Math.PI*2 / ways) + phaseOffset;
                 let isSine = (i % 2 === 0); 
-                
-                // ★应用动态计算的弹速
                 let spd = baseSpd + (isSine ? Math.sin(phaseOffset) : Math.cos(phaseOffset)) * waveAmp;
                 let color = isSine ? 'cyan' : 'magenta';
-                
                 bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(baseAng)*Math.abs(spd), Math.sin(baseAng)*Math.abs(spd), color, true));
             }
         }
     }
 }
-// ----------------- 原有小怪及Boss保留 -----------------
 
 class NormalEnemy extends Enemy {
     constructor(x, y) { super(x, y, 35, 30, 1, 10); }
@@ -629,10 +667,10 @@ class YamatoEnemy extends Enemy {
         let localTimer = this.timer % rate;
         if (localTimer > rate - 40 && this.laserActive === 0) {
             ctx.strokeStyle = "red";
-            if (this.timer % 4 < 2) { ctx.beginPath(); ctx.moveTo(this.x+25, this.y+50); ctx.lineTo(this.x+25, 800); ctx.stroke(); }
+            if (this.timer % 4 < 2) { ctx.beginPath(); ctx.moveTo(this.x+25, this.y+50); ctx.lineTo(this.x+25, GAME_HEIGHT); ctx.stroke(); }
         }
         if (this.laserActive > 0) {
-            ctx.fillStyle = "rgba(255, 50, 50, 0.86)"; ctx.fillRect(this.x+10, this.y+50, 30, 800);
+            ctx.fillStyle = "rgba(255, 50, 50, 0.86)"; ctx.fillRect(this.x+10, this.y+50, 30, GAME_HEIGHT);
         }
     }
     update() {
@@ -654,7 +692,7 @@ class YamatoEnemy extends Enemy {
     }
     checkHitPlayer(pRect) {
         if (super.checkHitPlayer(pRect)) return true;
-        if (this.laserActive > 0 && rectIntersect({x:this.x+10, y:this.y+50, w:30, h:800}, pRect)) return true;
+        if (this.laserActive > 0 && rectIntersect({x:this.x+10, y:this.y+50, w:30, h:GAME_HEIGHT}, pRect)) return true;
         return false;
     }
 }
@@ -683,7 +721,7 @@ class OrbitGuard extends Enemy {
 class BossSplitPart extends Enemy {
     constructor(x, y, dir) {
         super(x, y, 50, 50, 75, 400); this.initialDir = dir; this.timer = 0; this.spiralAngle = 0;
-        this.anchorX = (dir < 0) ? 80 : 320; this.anchorY = 120;
+        this.anchorX = (dir < 0) ? (GAME_WIDTH / 2 - 100) : (GAME_WIDTH / 2 + 50); this.anchorY = 120;
     }
     draw(ctx) {
         let isStationary = ((Math.floor(this.timer/200))%2 === 0) ^ (this.initialDir > 0);
@@ -740,7 +778,7 @@ class BossSplitPart extends Enemy {
 class BossEnemy extends Enemy {
     constructor(x, y, level) {
         super(x, y, 160, 100, (level===1?320:380), 1000);
-        this.level = level; this.targetX = 160; this.timer = 0; this.phase = 1;
+        this.level = level; this.targetX = GAME_WIDTH / 2 - 80; this.timer = 0; this.phase = 1;
         this.laserWarmup = 0; this.laserActive = 0; this.spiralAngle = 0;
         this.guards = []; this.isSplitTriggered = false;
         this.lockedLaserX = 0;
@@ -767,12 +805,27 @@ class BossEnemy extends Enemy {
             ctx.strokeStyle = "cyan";
             if (this.timer % 4 < 2) { 
                 ctx.beginPath(); ctx.moveTo(this.lockedLaserX, this.y + 80); 
-                ctx.lineTo(this.lockedLaserX, 800); ctx.stroke(); 
+                ctx.lineTo(this.lockedLaserX, GAME_HEIGHT); ctx.stroke(); 
             }
         }
         if (this.laserActive > 0) {
             ctx.fillStyle = "rgba(0, 255, 255, 0.5)";
-            ctx.fillRect(this.lockedLaserX - 35, this.y + 80, 70, 800);
+            ctx.fillRect(this.lockedLaserX - 35, this.y + 80, 70, GAME_HEIGHT);
+        }
+        
+        if (this.isInvincible) {
+            let cx = this.x + this.w / 2;
+            let cy = this.y + this.h / 2;
+            let radius = Math.max(this.w, this.h) / 2 + 10; 
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 255, 255, ${Math.abs(Math.sin(this.timer * 0.1)) * 0.4})`;
+            ctx.beginPath(); 
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2); 
+            ctx.fill();
+            ctx.strokeStyle = "rgba(0, 255, 255, 0.9)";
+            ctx.lineWidth = 3; 
+            ctx.stroke();
+            ctx.restore();
         }
     }
     drawOldSchool(ctx) {
@@ -785,12 +838,20 @@ class BossEnemy extends Enemy {
         if (this.isSplitTriggered) return;
         if (this.y < 60) this.y += 2;
         else {
-            if (Math.abs(this.x - this.targetX) < 10 || this.timer % 120 === 0) this.targetX = randomNextInt(260);
+            if (Math.abs(this.x - this.targetX) < 10 || this.timer % 120 === 0) this.targetX = randomNextInt(GAME_WIDTH - 160);
             this.x += (this.targetX - this.x)*0.03;
         }
         this.timer++;
         let hpPercent = this.hp / this.maxHp, s = diffMult, cx = this.x+80, cy = this.y+50;
-        this.phase = (hpPercent>0.65) ? 1 : (hpPercent>0.3) ? 2 : 3;
+        let expectedPhase = (hpPercent>0.65) ? 1 : (hpPercent>0.3) ? 2 : 3;
+        if (expectedPhase > this.phase && this.transitionTimer <= 0) {
+            this.transitionTimer = 80; 
+        }
+        if (this.transitionTimer > 0) {
+            this.transitionTimer--;
+            if (this.transitionTimer === 0) this.phase = expectedPhase; 
+            return; 
+        }
         let diff = menuSelection, waves = diff + 1;
         
         if (this.phase === 1) {
@@ -866,7 +927,7 @@ class BossEnemy extends Enemy {
         for(let g of this.guards) if (g.hp>0 && g.checkHitPlayer(pRect)) return true;
         if (this.laserActive > 0) {
             let lw = (this.level===2)?100:70;
-            if (rectIntersect({x:this.lockedLaserX-lw/2, y:this.y+80, w:lw, h:800}, pRect)) return true;
+            if (rectIntersect({x:this.lockedLaserX-lw/2, y:this.y+80, w:lw, h:GAME_HEIGHT}, pRect)) return true;
         }
         return false;
     }
@@ -905,28 +966,52 @@ class StarshipBoss extends Enemy {
         ctx.strokeStyle = "white"; ctx.strokeRect(this.x, this.y-20, 260, 10);
         
         if (this.phase === 1) {
-            let lx = 20 + this.laserStep * 40, rx = 460 - this.laserStep * 40;
+            let lx = 20 + this.laserStep * 40, rx = GAME_WIDTH - 20 - this.laserStep * 40;
             if (this.laserWarmup > 0) {
                 ctx.strokeStyle = "red";
                 if (this.timer % 4 < 2) {
-                    ctx.beginPath(); ctx.moveTo(lx, this.y+60); ctx.lineTo(lx, 800);
-                    ctx.moveTo(rx, this.y+60); ctx.lineTo(rx, 800); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(lx, this.y+60); ctx.lineTo(lx, GAME_HEIGHT);
+                    ctx.moveTo(rx, this.y+60); ctx.lineTo(rx, GAME_HEIGHT); ctx.stroke();
                 }
             } else if (this.laserActive > 0) {
                 ctx.fillStyle = "rgba(255, 0, 0, 0.7)";
-                ctx.fillRect(lx-10, this.y+60, 20, 800); ctx.fillRect(rx-10, this.y+60, 20, 800);
+                ctx.fillRect(lx-10, this.y+60, 20, GAME_HEIGHT); ctx.fillRect(rx-10, this.y+60, 20, GAME_HEIGHT);
             }
+        }
+        
+        if (this.isInvincible) {
+            let cx = this.x + this.w / 2;
+            let cy = this.y + this.h / 2;
+            let radius = Math.max(this.w, this.h) / 2 + 10; 
+            
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 255, 255, ${Math.abs(Math.sin(this.timer * 0.1)) * 0.4})`;
+            ctx.beginPath(); 
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2); 
+            ctx.fill();
+            
+            ctx.strokeStyle = "rgba(0, 255, 255, 0.9)";
+            ctx.lineWidth = 3; 
+            ctx.stroke();
+            ctx.restore();
         }
     }
     update() {
         if (this.y < 20) { this.y += 1; return; }
         this.timer++;
         let hpPercent = this.hp/this.maxHp, s = diffMult;
-        this.phase = (hpPercent>0.75)?1 : (hpPercent>0.5)?2 : (hpPercent>0.25)?3 : 4;
+        let expectedPhase = (hpPercent>0.75)?1 : (hpPercent>0.5)?2 : (hpPercent>0.25)?3 : 4;
+        if (expectedPhase > this.phase && this.transitionTimer <= 0) {
+            this.transitionTimer = 80; 
+        }
+        if (this.transitionTimer > 0) {
+            this.transitionTimer--;
+            if (this.transitionTimer === 0) this.phase = expectedPhase;
+            return; 
+        }
         let cx = this.x+130, cy = this.y+60, px = playerX+20, py = playerY+20;
         let diff = menuSelection, waves = 2*diff+1;
         
-        // ---------------- 原有的：伪装自机狙 ----------------
         let disguisedSnipeRate = Math.max(25, Math.floor(100/s));
         if (this.timer % disguisedSnipeRate === 0) {
             let baseAngle = Math.atan2(py-cy, px-cx), count = Math.floor(2+2*s);
@@ -937,33 +1022,22 @@ class StarshipBoss extends Enemy {
             }
         }
 
-        // ================= 新增：全阶段正余弦范围攻击 =================
-        // 难度关联 1：难度因子 s 越大，攻击频率越高
         let aoeRate = Math.max(20, Math.floor(70 / s)); 
         if (this.timer % aoeRate === 0) {
-            // 难度关联 2：难度选择 diff 越大，一圈发射的子弹数越密集
             let aoeBullets = 10 + diff * 6; 
-            let timeFactor = this.timer * 0.03; // 时间因子，用于让弹幕产生动态形变
+            let timeFactor = this.timer * 0.03; 
             
             for (let i = 0; i < aoeBullets; i++) {
                 let baseAngle = (i / aoeBullets) * Math.PI * 2;
-                
-                // 核心机制：利用正余弦函数随时间波动的特性，叠加在基础速度上
-                // 难度关联 3：波动的振幅也受到难度 s 和 diff 的加成
                 let waveModX = Math.sin(timeFactor + baseAngle * 3) * (1.5 * s); 
                 let waveModY = Math.cos(timeFactor + baseAngle * 3) * (1.5 * s);
-                
                 let baseSpeed = 2 + diff * 0.5;
                 let vx = Math.cos(baseAngle + timeFactor) * baseSpeed + waveModX;
                 let vy = Math.sin(baseAngle + timeFactor) * baseSpeed + waveModY;
-                
-                // 发射紫色系弹幕作为特殊 AoE 标识
                 bullets.push(new Bullet(cx, cy, 9, 9, vx, vy, '#b366ff', true)); 
             }
         }
-        // ==============================================================
 
-        // ---------------- 以下为原有的各阶段特有逻辑 ----------------
         if (this.phase === 1) {
             let spiralRate = Math.max(3, Math.floor(8/s));
             if (this.timer % spiralRate === 0) {
@@ -1002,7 +1076,7 @@ class StarshipBoss extends Enemy {
         }
         else if (this.phase === 3) {
             if (!this.phase3Summoned) {
-                enemies.push(new YamatoEnemy(this.x, this.y+130, true));       
+                enemies.push(new YamatoEnemy(this.x, this.y+130, true));        
                 enemies.push(new YamatoEnemy(this.x+210, this.y+130, true));   
                 this.phase3Summoned = true;
             }
@@ -1034,7 +1108,7 @@ class StarshipBoss extends Enemy {
         else if (this.phase === 4) {
             if (this.timer % Math.max(25, 60 - diff * 10) === 0) {
                 enemies.push(new MeteorEnemy(10 + Math.random() * 50, -40)); 
-                enemies.push(new MeteorEnemy(380 + Math.random() * 50, -40)); 
+                enemies.push(new MeteorEnemy(GAME_WIDTH - 100 + Math.random() * 50, -40)); 
             }
             if (this.timer % Math.max(4, Math.floor(12 / s)) === 0) {
                 this.spiralAngle += 0.12 * s; 
@@ -1058,40 +1132,31 @@ class StarshipBoss extends Enemy {
     checkHitPlayer(pRect) {
         if (super.checkHitPlayer(pRect)) return true;
         if (this.phase === 1 && this.laserActive > 0) {
-            let lx = 20 + this.laserStep * 40, rx = 460 - this.laserStep * 40;
-            if (rectIntersect({x:lx-10, y:this.y+60, w:20, h:800}, pRect)) return true;
-            if (rectIntersect({x:rx-10, y:this.y+60, w:20, h:800}, pRect)) return true;
+            let lx = 20 + this.laserStep * 40, rx = GAME_WIDTH - 20 - this.laserStep * 40;
+            if (rectIntersect({x:lx-10, y:this.y+60, w:20, h:GAME_HEIGHT}, pRect)) return true;
+            if (rectIntersect({x:rx-10, y:this.y+60, w:20, h:GAME_HEIGHT}, pRect)) return true;
         }
         return false;
     }
 }
 
-// ==============================================================================
-// ★ 终极重构版 Level4Boss：严格契合难度的“魔神级”数值缩放
-// ==============================================================================
 class Level4Boss extends Enemy {
     constructor(x, y) {
         super(x, y, 220, 160, 1140, 25000); 
         this.timer = 0; 
         this.phase = 1; 
-        
         this.aimOffset = 0; 
         this.rowAngle = 0;  
     }
     
    draw(ctx) {
-        // ★★★ 新增：贴图绘制逻辑 ★★★
         if (boss4Img.complete) {
-            // 根据需要微调绘制用的 w/h，这里稍微设大一点让它看起来更有气势
             let drawW = 260; 
             let drawH = 190;
-            // 居中绘制
             let drawX = this.x + this.w / 2 - drawW / 2; 
             let drawY = this.y + this.h / 2 - drawH / 2;
-            
             ctx.drawImage(boss4Img, drawX, drawY, drawW, drawH);
         } else {
-            // 如果图片未加载完成，保留一个备用图形（原有的渐变球逻辑）
             let cx = this.x + this.w/2, cy = this.y + this.h/2;
             let grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, 80);
             grad.addColorStop(0, "white");
@@ -1101,10 +1166,26 @@ class Level4Boss extends Enemy {
             ctx.beginPath(); ctx.arc(cx, cy, 80, 0, Math.PI*2); ctx.fill();
         }
         
-        // 血条绘制保持不变
         ctx.fillStyle = "red"; ctx.fillRect(this.x, this.y-20, this.w, 10);
         ctx.fillStyle = "green"; ctx.fillRect(this.x, this.y-20, this.w*(this.hp/this.maxHp), 10);
         ctx.strokeStyle = "white"; ctx.strokeRect(this.x, this.y-20, this.w, 10);
+
+        if (this.isInvincible) {
+            let cx = this.x + this.w / 2;
+            let cy = this.y + this.h / 2;
+            let radius = Math.max(this.w, this.h) / 2 + 10; 
+            
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 255, 255, ${Math.abs(Math.sin(this.timer * 0.1)) * 0.4})`;
+            ctx.beginPath(); 
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2); 
+            ctx.fill();
+            
+            ctx.strokeStyle = "rgba(0, 255, 255, 0.9)";
+            ctx.lineWidth = 3; 
+            ctx.stroke();
+            ctx.restore();
+        }
     }
     
     update() {
@@ -1112,44 +1193,45 @@ class Level4Boss extends Enemy {
         this.timer++;
         
         let hpPercent = this.hp / this.maxHp;
-        this.phase = (hpPercent>0.75) ? 1 : (hpPercent>0.5) ? 2 : (hpPercent>0.25) ? 3 : 4;
+        let expectedPhase = (hpPercent>0.75) ? 1 : (hpPercent>0.5) ? 2 : (hpPercent>0.25) ? 3 : 4;
+        if (expectedPhase > this.phase && this.transitionTimer <= 0) {
+            this.transitionTimer = 80; 
+            bullets = bullets.filter(b => !b.isEnemyBullet);
+        }
+        if (this.transitionTimer > 0) {
+            this.transitionTimer--;
+            if (this.transitionTimer === 0) this.phase = expectedPhase;
+            return; 
+        }
         
         let cx = this.x + 100, cy = this.y + 75;
         let px = playerX + 17.5, py = playerY + 17.5; 
-        
-        // ★ 核心难度控制器 (0: Easy, 1: Normal, 2: Hard, 3: Lunatic)
         let diff = menuSelection; 
 
-        // ==============================================================================
-        // ★ 第一阶段：蛇形墙封锁 + 随机弹 + 自机狙 + 下落排弹
-        // ==============================================================================
         if (this.phase === 1) {
-            
             if (this.timer % Math.max(2,(12-5*diff)) === 0) {
                 let snakeWave = Math.sin(this.timer * 0.06) * (90+20*diff); 
                 bullets.push(new Bullet(cx - 100 + snakeWave, cy, 10, 10, 0, 4.5, 'magenta', true)); 
                 bullets.push(new Bullet(cx + 100 + snakeWave, cy, 10, 10, 0, 4.5, 'magenta', true)); 
             }
 
-            // ★ 严格缩放：随机弹数量与速度
-            let randomStreams = 1 + diff * 2; // E:1, N:3, H:5, L:7 股
+            let randomStreams = 1 + diff * 2; 
             if (this.timer % 20 === 0) {
                 for(let i = 0; i < randomStreams; i++) {
                     let rAng = Math.random() * Math.PI * 2;
-                    let rSpd = 1.5 + Math.random() * (1 + diff); // 难度越高，上限速度越快
+                    let rSpd = 1.5 + Math.random() * (1 + diff); 
                     bullets.push(new Bullet(cx, cy, 8, 8, Math.cos(rAng)*rSpd, Math.sin(rAng)*rSpd, 'pink', true));
                 }
             }
 
-            // ★ 严格缩放：自机狙散布与速度
-            let aimSpeed = 3.5 + diff * 0.8; // E:3.5, N:4.3, H:5.1, L:5.9
+            let aimSpeed = 3.5 + diff * 0.8; 
             if (this.timer % (24/(diff+1)) === 0) {
                 this.aimOffset += 0.08; 
                 let bAng = Math.atan2(py - cy, px - cx) + Math.sin(this.aimOffset) * 0.15; 
                 bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(bAng)*aimSpeed, Math.sin(bAng)*aimSpeed, 'red', true));
             }
             
-            let aimBurstCount = 1 + diff * 2; // E:1, N:3, H:5, L:7 (始终是奇数弹，必中中心)
+            let aimBurstCount = 1 + diff * 2; 
             if (this.timer % 40 === 0) {
                 let burstAng = Math.atan2(py - cy, px - cx);
                 for(let i = 0; i < aimBurstCount; i++) {
@@ -1158,40 +1240,25 @@ class Level4Boss extends Enemy {
                 }
             }
 
-            // ★ 严格缩放：排弹的密集度与波数
-            let rowDensity = 3 + diff ;  // 颗子弹一排 (根据你的新公式)
-            let rowWaves = 1 
+            let rowDensity = 3 + diff ;  
+            let rowWaves = 1; 
             let rowCycle = 120;             
             
             if (this.timer % rowCycle < (rowWaves * 10) && this.timer % 10 === 0) {
-                // 修改点 1：计算 Boss 中心 (cx, cy) 瞄准玩家 (px, py) 的角度
                 let targetAngle = Math.atan2(py - cy, px - cx);
-                
-                // 修改点 2：将原本固定的 Math.PI/2 替换为 targetAngle，并保留摇摆效果
                 this.rowAngle = Math.sin(this.timer * 0.02) * 0.4; 
                 let fallAng = targetAngle + this.rowAngle; 
-                
-                let spacing = 26 - diff * 6; // 难度越高，子弹间距越小，墙越密
+                let spacing = 26 - diff * 6; 
                 
                 for(let i = 0; i < rowDensity; i++) {
                     let offset = (i - Math.floor(rowDensity/2)) * spacing; 
-                    
-                    // 这里 spawnX/Y 的 + Math.PI/2 不能动，它是为了让子弹横向排开
                     let spawnX = cx + Math.cos(fallAng + Math.PI/2) * offset;
                     let spawnY = cy + Math.sin(fallAng + Math.PI/2) * offset;
-                    
                     bullets.push(new Bullet(spawnX, spawnY, 8, 8, Math.cos(fallAng)*3.5, Math.sin(fallAng)*3.5, 'cyan', true));
                 }
             }
-                
-            
         }
-        
-        // ==============================================================================
-        // ★ 第二阶段：随机弹 + 自机狙 + 半包围密集弹幕墙(圆弧)
-        // ==============================================================================
         else if (this.phase === 2) {
-            
             if (this.timer % (20-diff*4) === 0) {
                 let randomStreams = 1 + diff * 2; 
                 for(let i=0; i<randomStreams; i++) {
@@ -1204,19 +1271,16 @@ class Level4Boss extends Enemy {
                 bullets.push(new Bullet(cx, cy, 10, 10, Math.cos(aimAng)*(3.5+diff*0.8), Math.sin(aimAng)*(3.5+diff*0.8), 'red', true));
             }
 
-            // ★ 严格缩放：圆弧释放频率与密集度
-            let arcRate = Math.max(25, 55 - diff*10); // E:55, N:45, H:35, L:25 帧释放一次
+            let arcRate = Math.max(25, 55 - diff*10); 
             if (this.timer % arcRate === 0) {
                 let targetAng = Math.atan2(py - cy, px - cx); 
-                let bulletCount = 20 + diff * 20; // E:20, N:30, H:40, L:50 颗构成圆弧
-                let arcSpread = Math.PI * 1.3;    
+                let bulletCount = 20 + diff * 20; 
+                let arcSpread = Math.PI * 1.3;   
                 let startAng = targetAng - arcSpread / 2;
                 let step = arcSpread / bulletCount;
                 
                 for (let i = 0; i <= bulletCount; i++) {
-                    // 低难度挖空缝隙逻辑
                     if (diff <= 1) {
-                        // Easy: 每3颗空1颗, Normal: 每4颗空1颗
                         if (i % (3 + diff*2) === 0) continue; 
                     }
                     let ang = startAng + i * step;
@@ -1224,12 +1288,7 @@ class Level4Boss extends Enemy {
                 }
             }
         }
-
-        // ==============================================================================
-        // ★ 第三阶段：随机弹 + 四股依次生成的静止弹幕 -> 乱射爆炸
-        // ==============================================================================
         else if (this.phase === 3) {
-            
             if (this.timer % 15 === 0) {
                 let randomStreams = 2 + diff * 2; 
                 for(let i=0; i<randomStreams; i++) {
@@ -1245,14 +1304,13 @@ class Level4Boss extends Enemy {
                 let sx = 0, sy = 0;
                 let progress = (cycle % 60) / 60; 
                 
-                if (spawnPhase === 0) { sx = progress * 480; sy = 180; }                
-                else if (spawnPhase === 1) { sx = 480 - progress * 480; sy = 400; }     
-                else if (spawnPhase === 2) { sx = 100; sy = progress * 800; }           
-                else if (spawnPhase === 3) { sx = 380; sy = 800 - progress * 800; }     
+                if (spawnPhase === 0) { sx = progress * GAME_WIDTH; sy = 180; }                
+                else if (spawnPhase === 1) { sx = GAME_WIDTH - progress * GAME_WIDTH; sy = 400; }     
+                else if (spawnPhase === 2) { sx = 100; sy = progress * 800; }            
+                else if (spawnPhase === 3) { sx = GAME_WIDTH - 100; sy = 800 - progress * 800; }      
                 
-                // ★ 严格缩放：生成的散乱程度和子弹密度
-                let scatter = 10 + diff * 5; // E:10, N:25, H:40, L:55 (Lunatic下满屏乱撒)
-                let density = 1 + diff*2;       // E:1, N:2, H:3, L:4 颗/次
+                let scatter = 10 + diff * 5; 
+                let density = 1 + diff*2;       
                 
                 for(let i = 0; i < density; i++) {
                     let noiseX = (Math.random() - 0.5) * scatter;
@@ -1263,7 +1321,6 @@ class Level4Boss extends Enemy {
                     b.behavior = function(bul) {
                         if (bul.timer === 80) { 
                             let rAng = Math.random() * Math.PI * 2;
-                            // ★ 爆散速度随难度急剧上升
                             let rSpd = 1.0 + Math.random() * (1 + diff * 0.5); 
                             bul.dx = Math.cos(rAng) * rSpd;
                             bul.dy = Math.sin(rAng) * rSpd;
@@ -1275,34 +1332,20 @@ class Level4Boss extends Enemy {
                 }
             }
         }
-
-        // ==============================================================================
-        // ★ 第四阶段：围绕边角的蛇形弹幕 (真正的数学蛇形轨迹)
-        // ==============================================================================
         else if (this.phase === 4) {
-            
             let isFirstHalf = (this.timer % 400) < 200;
-            
             let corners = isFirstHalf ? 
-                [{x: 40, y: 760}, {x: 440, y: 40}] :  
-                [{x: 440, y: 760}, {x: 40, y: 40}];   
+                [{x: 40, y: GAME_HEIGHT - 40}, {x: GAME_WIDTH - 40, y: 40}] :  
+                [{x: GAME_WIDTH - 40, y: GAME_HEIGHT - 40}, {x: 40, y: 40}];   
                 
-            // ★ 严格缩放：蛇的数量（股数）
-            let snakeStreams = 1 + diff; // E:1, N:2, H:3, L:4 股交织
-            
-            // ★ 严格缩放：蛇的连贯性(发射间隔，越小蛇的身体越密)
-            let snakeRate = Math.max(3, 24 - diff * 4); // E:12帧, N:9帧, H:6帧, L:3帧(绝对实线)
-            
-            // ★ 严格缩放：蛇的推进速度
-            let snakeSpeed = 1.5 + diff * 0.4; // E:2.5, N:3.3, H:4.1, L:4.9
-            
-            // ★ 严格缩放：蛇的扭动幅度 (振幅)
-            let waveAmp = 1.0 + diff * 0.4; // E:1.0, N:1.5, H:2.0, L:2.5
+            let snakeStreams = 1 + diff; 
+            let snakeRate = Math.max(3, 24 - diff * 4); 
+            let snakeSpeed = 1.5 + diff * 0.4; 
+            let waveAmp = 1.0 + diff * 0.4; 
 
             if (this.timer % snakeRate === 0) { 
                 for (let c of corners) {
                     for (let i = 0; i < snakeStreams; i++) {
-                        // 相位差导致多股蛇互相缠绕成麻花状
                         let driftX = Math.sin(this.timer * 0.05 + i) * 40;
                         let driftY = Math.cos(this.timer * 0.05 + i) * 40;
                         let spawnX = c.x + driftX;
@@ -1315,8 +1358,6 @@ class Level4Boss extends Enemy {
                         b.behavior = function(bul) {
                             let perpX = -Math.sin(aimAng); 
                             let perpY = Math.cos(aimAng);
-                            
-                            // 利用正弦波与垂直向量相乘，制造完美的正交蛇形波动
                             let wave = Math.cos(bul.timer * 0.15) * waveAmp; 
                             
                             bul.x += bul.dx + perpX * wave;
@@ -1326,13 +1367,9 @@ class Level4Boss extends Enemy {
                     }
                 }
             }
-            
-            // ★ 防角落蹲起机制：高频中心自机狙
-            // 难度越高，逼走位的频率和范围越恐怖
-            let snipeRate = Math.max(10, 50 - diff * 5); // E:40帧, N:30帧, H:20帧, L:10帧
+            let snipeRate = Math.max(10, 50 - diff * 5); 
             if (this.timer % snipeRate === 0) {
                 let bAng = Math.atan2(py - cy, px - cx);
-                // 奇数弹必中判定点：E/N 是单发，H/L 是3发和5发散弹
                 let snipeCount = 1 + diff * 2; 
                 let snipeSpeed = 3.5 + diff * 1.0; 
                 
@@ -1353,20 +1390,27 @@ function startGame() {
     maxPlayerHP = (menuSelection===0)?8 : (menuSelection===1)?6 : 5;
     playerHP = maxPlayerHP;
     playerBomb = 2; bombActiveTimer = 0;
-    playerX = 220; playerY = 600;
-    score = 0; currentLevel = 1; timerCount = 0;
-    levelTimer = 0; // 重置关卡时间
-    reward8k = false; reward20k = false; // 重置奖励标记
+    playerX = GAME_WIDTH / 2 - 20; playerY = 600;
+    score = 0; timerCount = 0;
+    levelTimer = 0; 
+    reward8k = false; reward20k = false; 
     invincibilityFrame = 0; bossSpawned = false; isPaused = false;
     bullets = []; enemies = []; items = [];
+    
+    // 选关模式下处理对应的起始关卡
+    if (isStagePractice) {
+        currentLevel = stageSelection + 1;
+    } else {
+        currentLevel = 1;
+    }
+    
     gameState = 1;
 }
 
 function takeDamage() {
     if (invincibilityFrame <= 0 && bombActiveTimer <= 0 && deathBombTimer <= 0) {
-        deathBombTimer = 16; // 40FPS 下 8 帧刚好是 0.2 秒
+        deathBombTimer = 16; 
     }
-   
 }
 
 function checkHighScore() {
@@ -1382,11 +1426,9 @@ function update() {
     timerCount++;
     levelTimer++;
 
-    // ★★★ 新增：决死倒计时结算
     if (deathBombTimer > 0) {
         deathBombTimer--;
         if (deathBombTimer === 0) {
-            // 0.2秒内没有按出 Bomb，决死失败，真正扣血！
             playerHP--;
             if(playerHP == 1){playerBomb++;}
             invincibilityFrame = 60;
@@ -1402,22 +1444,21 @@ function update() {
     }
     
     let speed = keys.Shift ? 3 : 7;
+    // 更新边界：玩家不能超出新设定的 GAME_WIDTH
     if (keys.ArrowLeft && playerX > 0) playerX -= speed;
-    if (keys.ArrowRight && playerX < 440) playerX += speed; 
+    if (keys.ArrowRight && playerX < GAME_WIDTH - 40) playerX += speed; 
     if (keys.ArrowUp && playerY > 0) playerY -= speed;
     if (keys.ArrowDown && playerY < 760) playerY += speed;
     
-    // ----------------- 新增：第四关起双排火力 -----------------
     if (keys.z && timerCount % 6 === 0) {
         if (currentLevel >= 4) {
-            // 第四关火力升级：双发激光，宽度调整贴合机体两侧
             bullets.push(new Bullet(playerX + 5, playerY, 8, 12, 0, -12, 'yellow', false));
             bullets.push(new Bullet(playerX + 25, playerY, 8, 12, 0, -12, 'yellow', false));
         } else {
             bullets.push(new Bullet(playerX + 15, playerY, 8, 12, 0, -12, 'yellow', false));
         }
     }
-if (keys.z && timerCount % 18 === 0) {
+    if (keys.z && timerCount % 18 === 0) {
         let homingCount = (currentLevel >= 4) ? 4 : 2;
         let spacing = (homingCount === 4) ? 30 : 50; 
         
@@ -1426,7 +1467,6 @@ if (keys.z && timerCount % 18 === 0) {
             let spawnX = playerX + 15 + offsetX;
             let spawnY = playerY + 25; 
             
-            // 1. 在发射的瞬间寻找屏幕内最近的敌人（只扫描一次）
             let target = null;
             let minDist = Infinity;
             for (let e of enemies) {
@@ -1437,10 +1477,9 @@ if (keys.z && timerCount % 18 === 0) {
                 if (dist < minDist) { minDist = dist; target = e; }
             }
             
-            // 2. 根据目标计算固定的飞行向量
             let speed = 22;
             let vx = 0;
-            let vy = -speed; // 如果屏幕里没敌人，默认垂直向上打
+            let vy = -speed; 
             
             if (target) {
                 let angle = Math.atan2((target.y + target.h/2) - spawnY, (target.x + target.w/2) - spawnX);
@@ -1448,11 +1487,7 @@ if (keys.z && timerCount % 18 === 0) {
                 vy = Math.sin(angle) * speed;
             }
             
-            // 3. 生成子弹，直接赋予计算好的 vx 和 vy
             let b = new Bullet(spawnX, spawnY, 8, 16, vx, vy, '#00FFCC', false);
-            
-            // 保留一个最简单的 behavior 仅仅是为了让 draw 函数把它画成青色尖刺形状
-            // 它的轨迹现在是绝对笔直的！
             b.behavior = function(bul) {
                 bul.x += bul.dx; 
                 bul.y += bul.dy;
@@ -1462,20 +1497,17 @@ if (keys.z && timerCount % 18 === 0) {
         }
     }
     
-    // 刷怪逻辑
-if (!bossSpawned) {
-        // 40帧 = 1秒。30s=1200, 45s=1800, 60s=2400, 80s=3200
-        if (currentLevel === 1 && levelTimer >= 1200) { enemies.push(new BossEnemy(150, -100, 1)); bossSpawned = true; }
-        else if (currentLevel === 2 && levelTimer >= 1800) { enemies.push(new BossEnemy(150, -100, 2)); bossSpawned = true; }
-        else if (currentLevel === 3 && levelTimer >= 2400) { enemies.push(new StarshipBoss(110, -150)); bossSpawned = true; }
-        else if (currentLevel === 4 && levelTimer >= 3200) { enemies.push(new Level4Boss(140, -150)); bossSpawned = true; }
+    if (!bossSpawned) {
+        if (currentLevel === 1 && levelTimer >= 1200) { enemies.push(new BossEnemy(GAME_WIDTH/2 - 80, -100, 1)); bossSpawned = true; }
+        else if (currentLevel === 2 && levelTimer >= 1800) { enemies.push(new BossEnemy(GAME_WIDTH/2 - 80, -100, 2)); bossSpawned = true; }
+        else if (currentLevel === 3 && levelTimer >= 2400) { enemies.push(new StarshipBoss(GAME_WIDTH/2 - 130, -150)); bossSpawned = true; }
+        else if (currentLevel === 4 && levelTimer >= 3200) { enemies.push(new Level4Boss(GAME_WIDTH/2 - 110, -150)); bossSpawned = true; }
         else {
-            // 第四关基础刷新率 1.5 倍
             let spawnRate = Math.max(27, Math.floor(45/(1+0.4*diffMult)));
-            if (currentLevel === 4) spawnRate = 45
+            if (currentLevel === 4) spawnRate = 45;
             
             if (timerCount % spawnRate === 0) {
-                let rx = randomNextInt(400);
+                let rx = randomNextInt(GAME_WIDTH - 60);
                 if (currentLevel === 1) {
                     enemies.push(randomNextBoolean() ? new NormalEnemy(rx, -30) : new ShooterEnemy(rx, -40));
                 } else if (currentLevel === 2) {
@@ -1490,12 +1522,9 @@ if (!bossSpawned) {
                         for(let i=0; i<swarmCount; i++) enemies.push(new SwarmMinion(rx+(i%4)*25-35, -40-Math.floor(i/4)*25));
                     }
                 } else if (currentLevel === 4) {
-                    // ★修改：彻底移除小飞机群，重新分配概率（40%扇形狙，40%正余弦，20%陨石冲锋）
                     let r = randomNextInt(100);
                     if (r < 50) enemies.push(new FanAimEnemy(rx, -40));
                     else  enemies.push(new SineCosineEnemy(rx, -40));
-                   
-                    
                 }
             }
         }
@@ -1503,20 +1532,19 @@ if (!bossSpawned) {
     
     bullets.forEach(b => b.update());
     let hitBox = {x: playerX+16, y: playerY+16, w: 3, h: 3};
-    // ★★★ 修改：给道具单独设定一个极大的吸收范围框（比如 120x120）
     let itemHitBox = {x: playerX - 40, y: playerY - 40, w: 120, h: 120};
     
-for(let i = items.length - 1; i >= 0; i--) {
+    for(let i = items.length - 1; i >= 0; i--) {
         let item = items[i];
         item.update();
-        if (rectIntersect(item.getRect(), itemHitBox)) { // 使用扩大的范围
+        if (rectIntersect(item.getRect(), itemHitBox)) { 
             if (item.type === 0) playerBomb++;
             else if (item.type === 1) {
                 if (playerHP < maxPlayerHP) playerHP++;
                 else score += 1000;
             } 
             else if (item.type === 2) {
-                score += 100; // 捡到蓝色加分道具加 100 分
+                score += 100; 
             }
             items.splice(i, 1);
         }
@@ -1529,26 +1557,24 @@ for(let i = items.length - 1; i >= 0; i--) {
         en.update();
         if (en.checkHitPlayer(hitBox)) takeDamage();
 
-        // ★★★ 修复：Bomb 伤害统一在这里结算
         if (bombActiveTimer > 0 && timerCount % 5 === 0) {
-            en.hp -= 1; // 每5帧造成1伤害，一发Bomb总伤约12
+            if (!en.isInvincible) en.hp -= 1; // 增加无敌判断
         }
 
-        let isDead = (en.hp <= 0); // 判断是否被 Bomb 直接炸死
+        let isDead = (en.hp <= 0); 
         
-for(let j = bullets.length - 1; j >= 0; j--) {
+        for(let j = bullets.length - 1; j >= 0; j--) {
             let b = bullets[j];
             if (!b.isEnemyBullet && rectIntersect(b.getRect(), en.getRect())) {
-                en.hp--;
+                if (!en.isInvincible)en.hp--;
                 bullets.splice(j, 1);
                 if (en.hp <= 0) {
-                    isDead = true; // 判断是否被子弹打死
+                    isDead = true; 
                 }
-                break; // 子弹命中后直接跳出这颗子弹的判定
+                break; 
             }
         }
         
-        // ★★★ 修复：不管是子弹打死还是Bomb炸死，统一处理掉落和推进关卡
         if (isDead) {
             score += en.scoreValue;
             let isBoss = (en instanceof BossEnemy || en instanceof StarshipBoss || en instanceof BossSplitPart || en instanceof Level4Boss);
@@ -1561,20 +1587,43 @@ for(let j = bullets.length - 1; j >= 0; j--) {
                     else if (currentLevel === 4) levelTimer += 80; 
                 }
             }
+            
+            // --- 修改这里的 Boss 死亡判定，加入选关退出逻辑与进度保存 ---
             if (en instanceof BossEnemy && currentLevel === 1) {
-                triggerLevel2 = true; items.push(new Item(en.x+80, en.y+50, 0));
+                saveUnlock(2);
+                if (isStagePractice) {
+                    triggerScene('end_level_1', 0); menuDepth = 0;
+                    enemies.splice(i, 1);
+                } else {
+                    triggerLevel2 = true; items.push(new Item(en.x+80, en.y+50, 0));
+                }
             } else if (en instanceof BossSplitPart) {
                 let splitsLeft = enemies.filter(e => e instanceof BossSplitPart).length;
-                if (splitsLeft <= 1) { triggerLevel3 = true; items.push(new Item(en.x+30, en.y+30, 1)); }
+                if (splitsLeft <= 1) { 
+                    saveUnlock(3);
+                    if (isStagePractice) {
+                        triggerScene('end_level_2', 0); menuDepth = 0;
+                        enemies.splice(i, 1);
+                    } else {
+                        triggerLevel3 = true; items.push(new Item(en.x+30, en.y+30, 1)); 
+                    }
+                }
             } else if (en instanceof StarshipBoss) {
-                triggerLevel4 = true; 
+                saveUnlock(4);
+                if (isStagePractice) {
+                    triggerScene('end_level_3', 0); menuDepth = 0;
+                    enemies.splice(i, 1);
+                } else {
+                    triggerLevel4 = true; 
+                }
             } else if (en instanceof Level4Boss) {
                 triggerWin = true; 
             }
-            enemies.splice(i, 1);
-                }
+            if (!isStagePractice || !(en instanceof BossEnemy || en instanceof BossSplitPart || en instanceof StarshipBoss || en instanceof Level4Boss)) {
+                enemies.splice(i, 1);
             }
-    
+        }
+    }
     
     if (triggerLevel2) { 
         triggerScene('end_level_1', 1); 
@@ -1589,81 +1638,169 @@ for(let j = bullets.length - 1; j >= 0; j--) {
         currentLevel=4; bossSpawned=false; bullets=[]; enemies=[]; score=Math.max(score,10000); levelTimer = 0;
     }
     if (triggerWin) { 
-        // 定义一个数组，索引0-3分别对应Easy, Normal, Hard, Lunatic的剧情键值
         let baseMult = 1.0;
-        if (menuSelection === 0) baseMult = 1.0;      // Easy
-        else if (menuSelection === 1) baseMult = 1.5; // Normal
-        else if (menuSelection === 2) baseMult = 1.8; // Hard
-        else if (menuSelection === 3) baseMult = 2.4; // Lunatic
+        if (menuSelection === 0) baseMult = 1.0;      
+        else if (menuSelection === 1) baseMult = 1.5; 
+        else if (menuSelection === 2) baseMult = 1.8; 
+        else if (menuSelection === 3) baseMult = 2.4; 
 
-        let hpMult = playerHP * 0.05;     // 每滴血 +0.05
-        let bombMult = playerBomb * 0.1;  // 每个B +0.1
+        let hpMult = playerHP * 0.05;     
+        let bombMult = playerBomb * 0.1;  
 
         let totalMult = baseMult + hpMult + bombMult;
         
-        // 计算最终得分并向下取整
         score = Math.floor(score * totalMult);
         const endingScenes = ['end_level_4_easy', 'end_level_4_normal', 'end_level_4_hard', 'end_level_4_lunatic'];
-        triggerScene(endingScenes[menuSelection], 3); 
+        
+        // 胜利时，如果是选关模式，播放完对应CG回到主页(gameState 0)
+        if (isStagePractice) {
+            triggerScene(endingScenes[menuSelection], 0);
+            menuDepth = 0;
+        } else {
+            triggerScene(endingScenes[menuSelection], 3); 
+        }
 
         currentDialogueLines = [...currentDialogueLines, `【系统】：战斗结算完毕，最终得分：${score} `];
         checkHighScore();
     }
-    // ★★★ 新增：达到特定分数时从屏幕上方空投 B 和 HP
+    
     if (!reward8k && score >= 12000) {
         reward8k = true;
-        items.push(new Item(180, -20, 0)); // 掉落 B
-        items.push(new Item(260, -20, 1)); // 掉落 HP
+        items.push(new Item(GAME_WIDTH/2 - 40, -20, 0)); 
+        items.push(new Item(GAME_WIDTH/2 + 40, -20, 1)); 
     }
     if (!reward20k && score >= 28000) {
         reward20k = true;
-        items.push(new Item(180, -20, 0)); 
-        items.push(new Item(260, -20, 1)); 
+        items.push(new Item(GAME_WIDTH/2 - 40, -20, 0)); 
+        items.push(new Item(GAME_WIDTH/2 + 40, -20, 1)); 
     }
     for(let b of bullets) {
         if (b.isEnemyBullet && rectIntersect(b.getRect(), hitBox)) takeDamage();
     }
     
-    bullets = bullets.filter(b => !(b.y<-50 || b.y>850 || b.x<-50 || b.x>500));
+    // 更新边界：清理超过 GAME_WIDTH 范围太远的子弹
+    bullets = bullets.filter(b => !(b.y<-50 || b.y>850 || b.x<-50 || b.x>GAME_WIDTH+50));
     items = items.filter(item => item.y <= 850);
 }
 
 function draw() {
+    // 每次清空整个画布
+    ctx.clearRect(0, 0, TOTAL_WIDTH, GAME_HEIGHT);
+
+    // 1. 绘制游戏主区域背景
     ctx.fillStyle = "rgb(15, 15, 35)";
-    ctx.fillRect(0, 0, 480, 800);
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     
+    // ----------------------------------------------------
+    // 主菜单状态 (包含选关多层菜单)
+    // ----------------------------------------------------
     if (gameState === 0) {
-        ctx.fillStyle = "white"; ctx.font = "bold 36px SansSerif"; ctx.fillText("神必飞机大战", 100, 200);
-        ctx.font = "24px SansSerif";
-        for (let i = 0; i < 4; i++) {
-            ctx.fillStyle = (i === menuSelection) ? "yellow" : "white";
-            ctx.fillText((i === menuSelection ? "-> " : "   ") + diffNames[i], 120, 350 + i * 50);
-        }
-        ctx.fillStyle = "gray"; ctx.font = "16px sans-serif";
-        ctx.fillText("上下左右选择/移动，Z开火，XBomb，Shift切换低速", 50, 600);
+        ctx.fillStyle = "rgb(10, 10, 20)";
+        ctx.fillRect(0, 0, TOTAL_WIDTH, GAME_HEIGHT);
         
+        // 绘制标题
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#00FFFF"; 
+        ctx.font = "bold 56px 'Microsoft YaHei', sans-serif"; 
+        ctx.shadowColor = "cyan";
+        ctx.shadowBlur = 15;
+        ctx.fillText("幻想战姬传", TOTAL_WIDTH / 2, 200);
+        
+        ctx.fillStyle = "#FF00FF";
+        ctx.font = "bold 26px 'Microsoft YaHei', sans-serif"; 
+        ctx.shadowColor = "#FF00FF";
+        ctx.fillText("~ the adventure of suger ~", TOTAL_WIDTH / 2, 260);
+        ctx.shadowBlur = 0; // 重置阴影以免影响其他文字
+        
+        ctx.font = "24px 'Microsoft YaHei', sans-serif";
+        
+        // --- 深度 0：选择游玩模式 ---
+        if (menuDepth === 0) {
+            let modes = ["故事模式 (Story Mode)", "选关模式 (Stage Practice)"];
+            for (let i = 0; i < 2; i++) {
+                let y = 380 + i * 65;
+                if (i === modeSelection) {
+                    ctx.fillStyle = "rgba(0, 255, 255, 0.2)";
+                    ctx.fillRect(TOTAL_WIDTH/2 - 200, y - 35, 400, 50);
+                    ctx.fillStyle = "yellow";
+                    ctx.fillText("▶ " + modes[i] + " ◀", TOTAL_WIDTH / 2, y);
+                } else {
+                    ctx.fillStyle = "white";
+                    ctx.fillText(modes[i], TOTAL_WIDTH / 2, y);
+                }
+            }
+        } 
+        // --- 深度 1：选择难度 ---
+        else if (menuDepth === 1) {
+            ctx.fillStyle = "#FFCC00";
+            ctx.fillText("请选择难度等级", TOTAL_WIDTH/2, 330);
+            for (let i = 0; i < 4; i++) {
+                let y = 390 + i * 65;
+                if (i === menuSelection) {
+                    ctx.fillStyle = "rgba(0, 255, 255, 0.2)";
+                    ctx.fillRect(TOTAL_WIDTH/2 - 200, y - 35, 400, 50);
+                    ctx.fillStyle = "yellow";
+                    ctx.fillText("▶ " + diffNames[i] + " ◀", TOTAL_WIDTH / 2, y);
+                } else {
+                    ctx.fillStyle = "white";
+                    ctx.fillText(diffNames[i], TOTAL_WIDTH / 2, y);
+                }
+            }
+        } 
+        // --- 深度 2：选择关卡 ---
+        else if (menuDepth === 2) {
+            ctx.fillStyle = "#FFCC00";
+            ctx.fillText("请选择挑战关卡", TOTAL_WIDTH/2, 330);
+            let maxUnlocked = saveProgress.unlocked[menuSelection];
+            for (let i = 0; i < 4; i++) {
+                let y = 390 + i * 65;
+                let isLocked = (i + 1) > maxUnlocked;
+                let text = "STAGE " + (i + 1) + (isLocked ? " [未解锁]" : "");
+                
+                if (i === stageSelection) {
+                    ctx.fillStyle = isLocked ? "rgba(255, 0, 0, 0.2)" : "rgba(0, 255, 255, 0.2)";
+                    ctx.fillRect(TOTAL_WIDTH/2 - 200, y - 35, 400, 50);
+                    ctx.fillStyle = isLocked ? "gray" : "yellow";
+                    ctx.fillText("▶ " + text + " ◀", TOTAL_WIDTH / 2, y);
+                } else {
+                    ctx.fillStyle = isLocked ? "#555" : "white";
+                    ctx.fillText(text, TOTAL_WIDTH / 2, y);
+                }
+            }
+        }
+        
+        // 操作说明
+        ctx.fillStyle = "gray"; ctx.font = "16px sans-serif";
+        if (menuDepth === 0) {
+            ctx.fillText("按上下方向键选择模式，按 Z 键确认", TOTAL_WIDTH / 2, 650);
+        } else {
+            ctx.fillText("按上下键选择，Z 键确认，X 键返回上级", TOTAL_WIDTH / 2, 650);
+        }
+        ctx.fillText("战斗操作：方向键移动 | Z 射击 | X Bomb | Shift 低速 | P 暂停", TOTAL_WIDTH / 2, 680);
+        
+        ctx.textAlign = "left"; // 恢复对齐
         ctx.font = "14px Arial"; ctx.fillStyle = "rgb(150, 150, 150)";
-        ctx.fillText("v1.0.3 - HTML5 Edition", 10, 740);
-        ctx.fillText("Author: Bingtangsoft", 320, 740);
+        ctx.fillText("v1.0.5 - Extra Wide Edition (+选关功能)", 10, 780);
+        ctx.fillText("Author: Bingtangsoft", TOTAL_WIDTH - 150, 780);
         return;
     }
     
     if (gameState === 2) {
-        ctx.fillStyle = "red"; ctx.font = "bold 40px sans-serif"; ctx.fillText("GAME OVER", 120, 350);
-        ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", 150, 420);
+        ctx.fillStyle = "red"; ctx.font = "bold 40px sans-serif"; ctx.fillText("GAME OVER", GAME_WIDTH/2 - 110, 350);
+        ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", GAME_WIDTH/2 - 80, 420);
         return;
     }
     if (gameState === 3) {
-        ctx.fillStyle = "green"; ctx.font = "bold 40px sans-serif"; ctx.fillText("MISSION CLEAR!", 80, 350);
-        ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", 150, 420);
+        ctx.fillStyle = "green"; ctx.font = "bold 40px sans-serif"; ctx.fillText("MISSION CLEAR!", GAME_WIDTH/2 - 140, 350);
+        ctx.fillStyle = "white"; ctx.font = "20px sans-serif"; ctx.fillText("按 Z 键返回主菜单", GAME_WIDTH/2 - 80, 420);
         return;
     }
     if (gameState === 4) {
         ctx.fillStyle = "#000"; 
-        ctx.fillRect(0, 0, 480, 400); 
+        ctx.fillRect(0, 0, GAME_WIDTH, 400); 
         if (currentSceneRects) {
             currentSceneRects.forEach(r => {
-                const rx = r.x || (480 - r.w) / 2;
+                const rx = r.x || (GAME_WIDTH - r.w) / 2; // 居中适配GAME_WIDTH
                 const ry = r.y || 0;
                 if (r.img) {
                     ctx.drawImage(r.img, rx, ry, r.w, r.h);
@@ -1678,7 +1815,7 @@ function draw() {
         ctx.strokeStyle = "rgb(100, 100, 255)"; 
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.rect(10, 410, 460, 380); 
+        ctx.rect(10, 410, GAME_WIDTH - 20, 380); 
         ctx.fill();
         ctx.stroke();
         
@@ -1686,13 +1823,13 @@ function draw() {
             ctx.fillStyle = "white";
             ctx.font = "20px '黑体', 'SansSerif', sans-serif";
             const text = currentDialogueLines[currentDialogueIndex];
-            wrapText(ctx, text, 30, 450, 420, 30);
+            wrapText(ctx, text, 30, 450, GAME_WIDTH - 60, 30);
         }
         
         if (timerCount % 30 < 15) { 
             ctx.fillStyle = "gray";
             ctx.font = "16px sans-serif";
-            ctx.fillText("按 Z 键继续...", 360, 770);
+            ctx.fillText("按 Z 键继续...", GAME_WIDTH - 120, 770);
         }
         return;
     }
@@ -1705,13 +1842,12 @@ function draw() {
     
     if (invincibilityFrame % 4 < 2 || bombActiveTimer > 0) {
         if (deathBombTimer > 0) {
-        // ★★★ 新增：决死特效，极高频的红白闪烁警报
-        let cx = playerX + 17.5; let cy = playerY + 17.5;
-        let dw = 80; let dh = 80;
-        ctx.fillStyle = (timerCount % 2 === 0) ? "rgba(255,0,0,0.8)" : "rgba(255,255,255,0.8)";
-        ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI*2); ctx.fill();
-        ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
-    }
+            let cx = playerX + 17.5; let cy = playerY + 17.5;
+            let dw = 80; let dh = 80;
+            ctx.fillStyle = (timerCount % 2 === 0) ? "rgba(255,0,0,0.8)" : "rgba(255,255,255,0.8)";
+            ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI*2); ctx.fill();
+            ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
+        }
         let cx = playerX + 17.5; let cy = playerY + 17.5;
         let dw = 80; let dh = 80; 
         ctx.drawImage(playerImg, cx - dw/2, cy - dh/2, dw, dh);
@@ -1728,18 +1864,6 @@ function draw() {
         }
     }
 
-    ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.fillText("HP:", 10, 50);
-    ctx.fillStyle = "darkgray"; ctx.fillRect(40, 38, 150, 15);
-    ctx.fillStyle = "red"; ctx.fillRect(40, 38, 150 * (playerHP/maxPlayerHP), 15);
-    ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(40, 38, 150, 15);
-    ctx.fillStyle = "white"; ctx.fillText(playerHP + "/" + maxPlayerHP, 195, 50);
-    
-    ctx.fillText("BOMB:", 10, 75);
-    ctx.fillStyle = "green";
-    for(let i=0; i<playerBomb; i++) {
-        ctx.beginPath(); ctx.arc(67 + i*20, 69, 7, 0, Math.PI*2); ctx.fill();
-    }
-    
     for(let item of items) item.draw(ctx);
     for(let b of bullets) b.draw(ctx);
     for(let en of enemies) {
@@ -1747,16 +1871,10 @@ function draw() {
         if (en instanceof BossEnemy) for(let og of en.guards) og.draw(ctx);
     }
     
-    ctx.fillStyle = "white"; ctx.font = "14px Arial";
-    ctx.fillText("Level: " + currentLevel + " Score: " + score, 10, 20);
-    ctx.fillText("Difficulty: " + diffNames[menuSelection].split('(')[0], 360, 20);
-    ctx.fillStyle = "gold";
-    ctx.fillText("High Score: " + Math.max(score, highScore), 10, 35);
-
     if (bossSpawned) {
         for(let e of enemies) {
             if (e instanceof BossEnemy || e instanceof StarshipBoss || e instanceof BossSplitPart || e instanceof Level4Boss) {
-                let bx = Math.max(15, Math.min(465, e.x + e.w/2));
+                let bx = Math.max(15, Math.min(GAME_WIDTH - 15, e.x + e.w/2));
                 ctx.fillStyle = "white";
                 ctx.beginPath(); ctx.moveTo(bx, 770); ctx.lineTo(bx-12, 790); ctx.lineTo(bx+12, 790); ctx.closePath(); ctx.fill();
                 ctx.fillStyle = "red";
@@ -1766,9 +1884,86 @@ function draw() {
     }
 
     if (isPaused) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.58)"; ctx.fillRect(0, 0, 480, 800);
-        ctx.fillStyle = "white"; ctx.font = "bold 40px sans-serif"; ctx.fillText("PAUSED", 150, 400);
-        ctx.font = "20px sans-serif"; ctx.fillText("按 P 键继续", 185, 450);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)"; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        ctx.fillStyle = "white"; ctx.font = "bold 40px sans-serif"; ctx.fillText("PAUSED", GAME_WIDTH/2 - 80, 380);
+        ctx.font = "20px sans-serif"; 
+        ctx.fillText("按 P 键恢复游戏", GAME_WIDTH/2 - 75, 430);
+        ctx.fillStyle = "#FF5555";
+        ctx.fillText("按 Q 键退出回主菜单", GAME_WIDTH/2 - 95, 470);
+    }
+
+    // ----------------------------------------------------
+    // 侧边栏绘制 (Sidebar UI)
+    // ----------------------------------------------------
+    let sbX = GAME_WIDTH;
+    
+    // 侧边栏背景与边框
+    ctx.fillStyle = "#181824";
+    ctx.fillRect(sbX, 0, SIDEBAR_WIDTH, GAME_HEIGHT);
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sbX, 0); ctx.lineTo(sbX, GAME_HEIGHT);
+    ctx.stroke();
+
+    // 标题区域
+    ctx.fillStyle = "white"; 
+    ctx.font = "bold 18px 'Microsoft YaHei'";
+    ctx.fillText("幻想战姬传", sbX + 25, 40);
+    ctx.fillStyle = "#00FFFF";
+    ctx.font = "italic 14px Arial";
+    ctx.fillText("开发版本不代表最终品质", sbX + 20, 60);
+
+    // 分割线
+    ctx.strokeStyle = "#333";
+    ctx.beginPath(); ctx.moveTo(sbX + 10, 85); ctx.lineTo(sbX + SIDEBAR_WIDTH - 10, 85); ctx.stroke();
+
+    // 关卡与难度
+    ctx.fillStyle = "white"; ctx.font = "16px Arial";
+    ctx.fillText("STAGE:", sbX + 15, 120);
+    ctx.fillStyle = "#FFCC00"; ctx.font = "bold 22px Arial";
+    ctx.fillText(currentLevel, sbX + 80, 122);
+
+    ctx.fillStyle = "white"; ctx.font = "14px 'Microsoft YaHei'";
+    let diffDisplayName = diffNames[menuSelection].split('(')[0];
+    ctx.fillText("难度: " + diffDisplayName, sbX + 15, 150);
+    ctx.fillStyle = isStagePractice ? "#00FFCC" : "white";
+    ctx.fillText(isStagePractice ? "[选关模式]" : "[故事模式]", sbX + 15, 170);
+
+    // 分割线
+    ctx.beginPath(); ctx.moveTo(sbX + 10, 190); ctx.lineTo(sbX + SIDEBAR_WIDTH - 10, 190); ctx.stroke();
+
+    // 分数区域
+    ctx.fillStyle = "gold"; ctx.font = "14px Arial";
+    ctx.fillText("HI-SCORE", sbX + 15, 220);
+    ctx.font = "bold 18px Arial";
+    ctx.fillText(Math.max(score, highScore).toLocaleString(), sbX + 15, 245);
+
+    ctx.fillStyle = "white"; ctx.font = "14px Arial";
+    ctx.fillText("SCORE", sbX + 15, 280);
+    ctx.font = "bold 18px Arial";
+    ctx.fillText(score.toLocaleString(), sbX + 15, 305);
+
+    // 分割线
+    ctx.beginPath(); ctx.moveTo(sbX + 10, 330); ctx.lineTo(sbX + SIDEBAR_WIDTH - 10, 330); ctx.stroke();
+
+    // HP 血条
+    ctx.fillStyle = "white"; ctx.font = "bold 16px Arial"; 
+    ctx.fillText("HP", sbX + 15, 365);
+    ctx.fillStyle = "darkgray"; ctx.fillRect(sbX + 15, 380, 160, 18);
+    ctx.fillStyle = "red"; ctx.fillRect(sbX + 15, 380, 160 * (playerHP/maxPlayerHP), 18);
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(sbX + 15, 380, 160, 18);
+    // 在血条中间显示数字
+    ctx.fillStyle = "white"; ctx.font = "14px Arial";
+    ctx.fillText(playerHP + " / " + maxPlayerHP, sbX + 70, 394);
+    
+    // Bomb
+    ctx.fillStyle = "white"; ctx.font = "bold 16px Arial";
+    ctx.fillText("BOMB", sbX + 15, 435);
+    ctx.fillStyle = "green";
+    for(let i=0; i<playerBomb; i++) {
+        ctx.beginPath(); ctx.arc(sbX + 25 + i * 22, 460, 8, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = "white"; ctx.stroke();
     }
 }
 
